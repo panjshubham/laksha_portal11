@@ -1,0 +1,19 @@
+# Dependencies
+node_modules/
+
+# Environment files — NEVER commit real secrets
+.env
+server/.env
+
+# Build output
+dist/
+
+# Vite cache
+.vite/
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log

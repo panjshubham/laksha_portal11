@@ -1,0 +1,48 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+body {
+  @apply bg-obsidian text-white font-sans;
+  margin: 0;
+  padding: 0;
+  overflow-x: hidden;
+}
+
+#canvas-container {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100vw;
+  height: 100vh;
+  z-index: -1;
+  pointer-events: none;
+}
+
+.mist-overlay {
+    background: radial-gradient(circle at center, transparent 0%, #08090A 100%);
+    pointer-events: none;
+}
+
+.obsidian-bg {
+    background-color: #08090A;
+}
+
+.cyan-text {
+    color: #00F0FF;
+}
+
+.cyan-glow:hover {
+    box-shadow: 0 0 15px rgba(0, 240, 255, 0.4);
+    transition: box-shadow 0.3s ease;
+}
+
+.glass-pill {
+    background: rgba(255, 255, 255, 0.05);
+    backdrop-filter: blur(10px);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.force-dark-text {
+    color: #ffffff;
+}
