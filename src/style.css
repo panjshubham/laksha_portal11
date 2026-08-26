@@ -46,3 +46,29 @@ body {
 .force-dark-text {
     color: #ffffff;
 }
+
+@layer utilities {
+  .font-display-lg { @apply font-sans font-bold text-6xl tracking-tighter; }
+  .text-display-lg { @apply text-6xl; }
+  
+  .font-headline-xl { @apply font-sans font-bold text-xl; }
+  .text-headline-xl { @apply text-xl; }
+  
+  .font-headline-lg { @apply font-sans font-bold text-lg; }
+  .text-headline-lg { @apply text-lg; }
+  
+  .font-headline-md { @apply font-sans font-bold text-base; }
+  .text-headline-md { @apply text-base; }
+  
+  .font-body-md { @apply font-sans text-base; }
+  .text-body-md { @apply text-base; }
+  
+  .font-body-sm { @apply font-sans text-sm; }
+  .text-body-sm { @apply text-sm; }
+  
+  .font-label-caps { @apply font-sans font-semibold text-xs tracking-wider uppercase; }
+  .text-label-caps { @apply text-xs; }
+  
+  .font-data-tabular { @apply font-mono text-sm; }
+  .text-data-tabular { @apply text-sm; }
+}

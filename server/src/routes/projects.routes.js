@@ -60,6 +60,23 @@ projectsRouter.patch('/:id/draft', authMiddleware, async (req, res) => {
   }
 });
 
+// GET /api/projects/:id/history
+projectsRouter.get('/:id/history', authMiddleware, async (req, res) => {
+  try {
+    const result = await query(
+      `SELECT h.from_stage, h.to_stage, h.comments, h.created_at, u.name as actor_name, u.email as actor_email 
+       FROM stage_history h 
+       LEFT JOIN users u ON h.actor_id = u.id 
+       WHERE h.project_id = $1 
+       ORDER BY h.created_at DESC`,
+      [req.params.id]
+    );
+    res.json(result.rows);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // POST /api/projects/:id/submit (Submit for Approval)
 projectsRouter.post('/:id/submit', authMiddleware, async (req, res) => {
   const { to_stage, comments } = req.body;

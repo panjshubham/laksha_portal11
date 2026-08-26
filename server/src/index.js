@@ -4,6 +4,7 @@ import { env } from './config/env.js';
 import { authRouter } from './routes/auth.routes.js';
 import { dashboardRouter } from './routes/dashboard.routes.js';
 import { projectsRouter } from './routes/projects.routes.js';
+import { usersRouter } from './routes/users.routes.js';
 
 const app = express();
 
@@ -13,6 +14,7 @@ app.use(express.json());
 app.use('/api/auth', authRouter);
 app.use('/api/dashboard', dashboardRouter);
 app.use('/api/projects', projectsRouter);
+app.use('/api/users', usersRouter);
 
 app.get('/health', (req, res) => {
   res.json({ status: 'ok' });
