@@ -97,6 +97,7 @@ function getTopNavHtml(activeTab = 'dashboard') {
   const user = activeUser || { name: 'User', email: '', role: 'member' };
   const userName = user.name || (user.email ? user.email.split('@')[0] : 'User');
   const userRole = (user.role || 'member').toUpperCase();
+  const isAdmin = user.role === 'admin';
   
   return `
     <header class="bg-[#1F3864] text-white border-b border-[#152747] px-4 py-2.5 flex flex-wrap items-center justify-between shadow-sm select-none">
@@ -113,15 +114,19 @@ function getTopNavHtml(activeTab = 'dashboard') {
       <div class="flex items-center gap-2 mt-2 sm:mt-0 text-xs">
         <div class="hidden md:flex items-center gap-1.5 text-white/90 mr-2 border-r border-white/20 pr-3">
           <span>User: <strong class="text-white">${userName}</strong> <span class="text-gray-300">(${user.email || ''})</span></span>
-          <span class="text-[10px] bg-white/20 text-white px-1.5 py-0.2 border border-white/30 font-semibold uppercase">[${userRole}]</span>
+          <span class="text-[10px] ${isAdmin ? 'bg-[#2563EB] text-white' : 'bg-white/20 text-white'} px-1.5 py-0.2 border border-white/30 font-semibold uppercase">[${userRole}]</span>
         </div>
         
         <button onclick="window.location.hash='#dashboard'" class="px-2.5 py-1 text-xs border ${activeTab === 'dashboard' ? 'bg-white text-[#1F3864] font-bold border-white' : 'bg-white/10 hover:bg-white/20 text-white border-white/30'} transition">
-          Dashboard
+          ${isAdmin ? 'My Dashboard' : 'Dashboard'}
         </button>
-        <button onclick="window.location.hash='#grid'" class="px-2.5 py-1 text-xs border ${activeTab === 'grid' ? 'bg-white text-[#1F3864] font-bold border-white' : 'bg-white/10 hover:bg-white/20 text-white border-white/30'} transition">
-          Excel Grid View
-        </button>
+        
+        ${isAdmin ? `
+          <button onclick="window.location.hash='#admin'" class="px-2.5 py-1 text-xs border ${activeTab === 'admin' ? 'bg-white text-[#1F3864] font-bold border-white' : 'bg-white/10 hover:bg-white/20 text-white border-white/30'} transition">
+            All Projects (Admin)
+          </button>
+        ` : ''}
+
         <button id="btn-new-idea-nav" class="px-2.5 py-1 text-xs border bg-[#16A34A] hover:bg-[#15803D] text-white font-semibold border-green-700 transition">
           + New Idea
         </button>
@@ -411,7 +416,7 @@ async function renderDashboard() {
     ${getTopNavHtml('dashboard')}
     <main class="p-4 max-w-[1440px] mx-auto text-gray-800">
       <div class="p-8 text-center text-gray-500 font-sans text-xs">
-        Loading stage-gate initiatives from database...
+        Loading stage-gate initiatives...
       </div>
     </main>
   `;
@@ -436,6 +441,10 @@ async function renderDashboard() {
   };
   
   const analytics = apiSummary.analytics || { totalActive: projects.length, avgTimeInStage: 14, completedThisMonth: getCount('D4') };
+  const isAdmin = activeUser?.role === 'admin';
+
+  // Get unique owners for admin filter dropdown
+  const uniqueOwners = [...new Set(projects.map(p => p.suggester_name || p.suggester_email).filter(Boolean))].sort();
 
   const stagesList = [
     { id: 'D0', name: 'D0 Validation', desc: 'Potential & Strategy', color: '#2563EB' },
@@ -450,22 +459,28 @@ async function renderDashboard() {
     
     <main class="p-3 md:p-4 max-w-[1440px] mx-auto text-gray-900">
       
-      <!-- Top Title & KPI Row -->
+      <!-- Top Title & Scope Row -->
       <div class="flex flex-wrap items-center justify-between gap-2 mb-3 pb-2 border-b border-gray-300">
         <div>
-          <h2 class="text-base font-bold text-[#1F3864] uppercase tracking-tight">IDEA PIPELINE OVERVIEW</h2>
-          <p class="text-xs text-gray-500">Overview of ongoing enterprise initiatives from ideation to realization.</p>
+          <div class="flex items-center gap-2">
+            <h2 class="text-base font-bold text-[#1F3864] uppercase tracking-tight">IDEA PIPELINE DASHBOARD</h2>
+            <span class="text-[11px] px-2 py-0.5 font-bold ${isAdmin ? 'bg-[#1F3864] text-white' : 'bg-gray-100 text-gray-700 border border-gray-300'} uppercase">
+              ${isAdmin ? 'Scope: All Projects (Admin View)' : 'Scope: My Projects'}
+            </span>
+          </div>
+          <p class="text-xs text-gray-500 mt-0.5">
+            ${isAdmin ? 'Company-wide portfolio of innovation initiatives across all workstreams.' : 'Track, update, and progress your active innovation initiatives.'}
+          </p>
         </div>
+
         <div class="flex items-center gap-4 text-xs font-mono bg-[#F8FAFC] border border-gray-300 px-3 py-1.5">
-          <span>Total Active: <strong class="text-[#1F3864] font-bold">${analytics.totalActive}</strong></span>
+          <span>Active Initiatives: <strong class="text-[#1F3864] font-bold">${analytics.totalActive}</strong></span>
           <span class="text-gray-300">|</span>
-          <span>Avg Time in Stage: <strong class="text-gray-700">${analytics.avgTimeInStage} days</strong></span>
-          <span class="text-gray-300">|</span>
-          <span>Realized in D4: <strong class="text-[#16A34A] font-bold">${getCount('D4')}</strong></span>
+          <span>Completed in D4: <strong class="text-[#16A34A] font-bold">${getCount('D4')}</strong></span>
         </div>
       </div>
 
-      <!-- 5 Stage Summary Boxes (Live Dynamic Counts) -->
+      <!-- 5 Stage Summary Boxes (Live Dynamic Counts scoped by RLS) -->
       <div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-2.5 mb-3">
         ${stagesList.map(s => `
           <div class="stage-filter-box bg-white border border-gray-300 p-2.5 cursor-pointer hover:bg-gray-50 transition" style="border-left: 4px solid ${s.color};" data-stage="${s.id}">
@@ -487,7 +502,7 @@ async function renderDashboard() {
         <div class="flex flex-wrap items-center gap-2">
           <div class="flex items-center gap-1.5">
             <label class="font-semibold text-gray-700 whitespace-nowrap">Search:</label>
-            <input id="dashboard-search" type="text" placeholder="Title, ID, Suggester..." class="bg-white border border-gray-300 px-2 py-1 w-48 sm:w-60 text-xs focus:outline-none focus:border-[#1F3864]" />
+            <input id="dashboard-search" type="text" placeholder="Title, ID, Suggester..." class="bg-white border border-gray-300 px-2 py-1 w-44 sm:w-56 text-xs focus:outline-none focus:border-[#1F3864]" />
           </div>
           
           <div class="flex items-center gap-1.5">
@@ -501,6 +516,16 @@ async function renderDashboard() {
               <option value="D4">D4 Completed</option>
             </select>
           </div>
+
+          ${isAdmin ? `
+            <div class="flex items-center gap-1.5">
+              <label class="font-semibold text-gray-700 whitespace-nowrap">Filter by Owner:</label>
+              <select id="dashboard-owner-filter" class="bg-white border border-gray-300 px-2 py-1 text-xs focus:outline-none focus:border-[#1F3864]">
+                <option value="ALL">All Owners / Employees</option>
+                ${uniqueOwners.map(owner => `<option value="${owner}">${owner}</option>`).join('')}
+              </select>
+            </div>
+          ` : ''}
 
           <div class="flex items-center gap-1.5">
             <label class="font-semibold text-gray-700 whitespace-nowrap">Workstream:</label>
@@ -519,9 +544,6 @@ async function renderDashboard() {
         <div class="flex items-center gap-2">
           <button id="btn-new-idea" class="px-3 py-1 bg-[#1F3864] hover:bg-[#152747] text-white font-semibold text-xs border border-[#152747] transition">
             + New Idea
-          </button>
-          <button onclick="window.location.hash='#grid'" class="px-3 py-1 bg-white hover:bg-gray-100 text-gray-800 font-semibold text-xs border border-gray-300 transition">
-            Spreadsheet View
           </button>
         </div>
       </div>
@@ -548,7 +570,7 @@ async function renderDashboard() {
       </div>
       
       <div class="flex items-center justify-between text-xs text-gray-500 mt-2">
-        <span id="table-count-label">Showing all projects</span>
+        <span id="table-count-label">Showing projects</span>
         <span>Click on any row to open the stage-gate project details</span>
       </div>
 
@@ -561,6 +583,7 @@ async function renderDashboard() {
 
   const searchInput = document.getElementById('dashboard-search');
   const stageFilter = document.getElementById('dashboard-stage-filter');
+  const ownerFilter = document.getElementById('dashboard-owner-filter');
   const workstreamFilter = document.getElementById('dashboard-workstream-filter');
   const tbody = document.getElementById('dashboard-tbody');
   const countLabel = document.getElementById('table-count-label');
@@ -568,14 +591,16 @@ async function renderDashboard() {
   function renderTableRows() {
     const q = searchInput.value.toLowerCase().trim();
     const stage = stageFilter.value;
+    const owner = ownerFilter ? ownerFilter.value : 'ALL';
     const workstream = workstreamFilter.value;
 
     const filtered = projects.filter(p => {
       const idStr = ('I' + (p.id || '')).toLowerCase();
       const matchQ = !q || p.title.toLowerCase().includes(q) || idStr.includes(q) || (p.suggester_name || '').toLowerCase().includes(q) || (p.suggester_email || '').toLowerCase().includes(q);
       const matchStage = stage === 'ALL' || (p.current_stage || 'D0').toUpperCase() === stage;
+      const matchOwner = owner === 'ALL' || (p.suggester_name || p.suggester_email) === owner;
       const matchWorkstream = workstream === 'ALL' || (p.workstream || 'Operations').toLowerCase() === workstream.toLowerCase();
-      return matchQ && matchStage && matchWorkstream;
+      return matchQ && matchStage && matchOwner && matchWorkstream;
     });
 
     countLabel.textContent = `Showing ${filtered.length} of ${projects.length} initiatives`;
@@ -584,7 +609,7 @@ async function renderDashboard() {
       tbody.innerHTML = `
         <tr>
           <td colspan="8" class="text-center py-8 text-gray-500">
-            No projects found matching the criteria.
+            ${projects.length === 0 ? 'No initiatives recorded yet. Click "+ New Idea" to submit your first project.' : 'No projects found matching your search and filter criteria.'}
           </td>
         </tr>
       `;
@@ -638,6 +663,7 @@ async function renderDashboard() {
 
   searchInput.addEventListener('input', renderTableRows);
   stageFilter.addEventListener('change', renderTableRows);
+  if (ownerFilter) ownerFilter.addEventListener('change', renderTableRows);
   workstreamFilter.addEventListener('change', renderTableRows);
 
   document.querySelectorAll('.stage-filter-box').forEach(box => {
@@ -651,7 +677,230 @@ async function renderDashboard() {
 }
 
 // ==========================================
-// 5. PROJECT DETAIL & WORKFLOW PAGE (#project/:id)
+// 5. ADMIN ALL PROJECTS CONSOLE (#admin)
+// ==========================================
+
+async function renderAdminConsole() {
+  if (activeUser?.role !== 'admin') {
+    showToast('Access denied. Admin console is restricted.', 'error');
+    window.location.hash = '#dashboard';
+    return;
+  }
+
+  document.title = "All Projects (Admin Console) — Lakshya";
+  window.location.hash = '#admin';
+  const app = document.getElementById('app');
+
+  app.innerHTML = `
+    ${getTopNavHtml('admin')}
+    <main class="p-4 max-w-[1440px] mx-auto text-gray-800">
+      <div class="p-8 text-center text-gray-500 font-sans text-xs">
+        Loading company-wide initiatives from all employees...
+      </div>
+    </main>
+  `;
+  bindNavEvents();
+
+  let projects = [];
+  try {
+    projects = await api.getProjects();
+  } catch (err) {
+    showToast('Error loading company projects: ' + err.message, 'error');
+  }
+
+  const uniqueOwners = [...new Set(projects.map(p => p.suggester_name || p.suggester_email).filter(Boolean))].sort();
+
+  app.innerHTML = `
+    ${getTopNavHtml('admin')}
+    
+    <main class="p-3 md:p-4 max-w-[1440px] mx-auto text-gray-900">
+      
+      <!-- Top Title -->
+      <div class="flex flex-wrap items-center justify-between gap-2 mb-3 pb-2 border-b border-gray-300">
+        <div>
+          <div class="flex items-center gap-2">
+            <h1 class="text-base font-bold text-[#1F3864] uppercase tracking-tight">COMPANY-WIDE INITIATIVES (ADMIN CONSOLE)</h1>
+            <span class="text-[11px] px-2 py-0.5 font-bold bg-[#1F3864] text-white uppercase">Full Administrative View</span>
+          </div>
+          <p class="text-xs text-gray-500 mt-0.5">Comprehensive view of all stage-gate projects submitted across every department and employee.</p>
+        </div>
+        <div class="text-xs font-mono bg-[#F8FAFC] border border-gray-300 px-3 py-1.5">
+          <span>Total Database Records: <strong class="text-[#1F3864] font-bold">${projects.length}</strong></span>
+        </div>
+      </div>
+
+      <!-- Toolbar -->
+      <div class="bg-[#F1F5F9] border border-gray-300 p-2 mb-2.5 flex flex-wrap items-center justify-between gap-2 text-xs">
+        <div class="flex flex-wrap items-center gap-2">
+          <div class="flex items-center gap-1.5">
+            <label class="font-semibold text-gray-700 whitespace-nowrap">Search:</label>
+            <input id="admin-search" type="text" placeholder="Title, ID, Suggester..." class="bg-white border border-gray-300 px-2 py-1 w-48 sm:w-60 text-xs focus:outline-none focus:border-[#1F3864]" />
+          </div>
+
+          <div class="flex items-center gap-1.5">
+            <label class="font-semibold text-gray-700 whitespace-nowrap">Filter by Owner (Employee):</label>
+            <select id="admin-owner-filter" class="bg-white border border-gray-300 px-2 py-1 text-xs focus:outline-none focus:border-[#1F3864]">
+              <option value="ALL">All Employees (${uniqueOwners.length})</option>
+              ${uniqueOwners.map(owner => `<option value="${owner}">${owner}</option>`).join('')}
+            </select>
+          </div>
+
+          <div class="flex items-center gap-1.5">
+            <label class="font-semibold text-gray-700 whitespace-nowrap">Stage:</label>
+            <select id="admin-stage-filter" class="bg-white border border-gray-300 px-2 py-1 text-xs focus:outline-none focus:border-[#1F3864]">
+              <option value="ALL">All Stages</option>
+              <option value="D0">D0 Validation</option>
+              <option value="D1">D1 Score Matrix</option>
+              <option value="D2">D2 Sign-Off</option>
+              <option value="D3">D3 Implementation</option>
+              <option value="D4">D4 Completed</option>
+            </select>
+          </div>
+
+          <div class="flex items-center gap-1.5">
+            <label class="font-semibold text-gray-700 whitespace-nowrap">Workstream:</label>
+            <select id="admin-workstream-filter" class="bg-white border border-gray-300 px-2 py-1 text-xs focus:outline-none focus:border-[#1F3864]">
+              <option value="ALL">All Workstreams</option>
+              <option value="Operations">Operations</option>
+              <option value="Maintenance">Maintenance</option>
+              <option value="Production">Production</option>
+              <option value="Engineering">Engineering</option>
+              <option value="Procurement">Procurement</option>
+              <option value="Quality">Quality</option>
+            </select>
+          </div>
+        </div>
+
+        <button id="btn-admin-new-idea" class="px-3 py-1 bg-[#1F3864] hover:bg-[#152747] text-white font-semibold text-xs border border-[#152747] transition">
+          + New Idea
+        </button>
+      </div>
+
+      <!-- Admin Data Table -->
+      <div class="border border-gray-300 bg-white overflow-x-auto">
+        <table class="excel-table w-full">
+          <thead>
+            <tr class="bg-[#1F3864] text-white">
+              <th class="py-1.5 px-2.5 font-bold text-xs text-white border-r border-[#2F5597] w-16 text-center">ID</th>
+              <th class="py-1.5 px-2.5 font-bold text-xs text-white border-r border-[#2F5597]">Title / Description</th>
+              <th class="py-1.5 px-2.5 font-bold text-xs text-white border-r border-[#2F5597] w-24 text-center">Stage</th>
+              <th class="py-1.5 px-2.5 font-bold text-xs text-white border-r border-[#2F5597] w-40">Owner Name / Email</th>
+              <th class="py-1.5 px-2.5 font-bold text-xs text-white border-r border-[#2F5597] w-28">Work Stream</th>
+              <th class="py-1.5 px-2.5 font-bold text-xs text-white border-r border-[#2F5597] w-32">EBITDA Category</th>
+              <th class="py-1.5 px-2.5 font-bold text-xs text-white border-r border-[#2F5597] w-28">Last Updated</th>
+              <th class="py-1.5 px-2.5 font-bold text-xs text-white text-center w-24">Actions</th>
+            </tr>
+          </thead>
+          <tbody id="admin-tbody" class="font-sans text-xs">
+            <!-- Populated via renderAdminRows() -->
+          </tbody>
+        </table>
+      </div>
+
+      <div class="flex items-center justify-between text-xs text-gray-500 mt-2">
+        <span id="admin-count-label">Showing all projects</span>
+        <span>Administrator privilege: Direct view and gate edit permissions for all records</span>
+      </div>
+
+    </main>
+  `;
+
+  bindNavEvents();
+  document.getElementById('btn-admin-new-idea').addEventListener('click', () => showNewIdeaModal());
+
+  const searchInput = document.getElementById('admin-search');
+  const ownerFilter = document.getElementById('admin-owner-filter');
+  const stageFilter = document.getElementById('admin-stage-filter');
+  const workstreamFilter = document.getElementById('admin-workstream-filter');
+  const tbody = document.getElementById('admin-tbody');
+  const countLabel = document.getElementById('admin-count-label');
+
+  function renderAdminRows() {
+    const q = searchInput.value.toLowerCase().trim();
+    const owner = ownerFilter.value;
+    const stage = stageFilter.value;
+    const workstream = workstreamFilter.value;
+
+    const filtered = projects.filter(p => {
+      const idStr = ('I' + (p.id || '')).toLowerCase();
+      const matchQ = !q || p.title.toLowerCase().includes(q) || idStr.includes(q) || (p.suggester_name || '').toLowerCase().includes(q) || (p.suggester_email || '').toLowerCase().includes(q);
+      const matchOwner = owner === 'ALL' || (p.suggester_name || p.suggester_email) === owner;
+      const matchStage = stage === 'ALL' || (p.current_stage || 'D0').toUpperCase() === stage;
+      const matchWorkstream = workstream === 'ALL' || (p.workstream || 'Operations').toLowerCase() === workstream.toLowerCase();
+      return matchQ && matchOwner && matchStage && matchWorkstream;
+    });
+
+    countLabel.textContent = `Showing ${filtered.length} of ${projects.length} company initiatives`;
+
+    if (filtered.length === 0) {
+      tbody.innerHTML = `
+        <tr>
+          <td colspan="8" class="text-center py-8 text-gray-500">
+            No projects found matching the selected filter criteria.
+          </td>
+        </tr>
+      `;
+      return;
+    }
+
+    const stageColors = {
+      'D0': 'bg-blue-50 text-blue-800 border-blue-300',
+      'D1': 'bg-amber-50 text-amber-800 border-amber-300',
+      'D2': 'bg-orange-50 text-orange-800 border-orange-300',
+      'D3': 'bg-indigo-50 text-indigo-800 border-indigo-300',
+      'D4': 'bg-green-50 text-green-800 border-green-300'
+    };
+
+    tbody.innerHTML = filtered.map((proj, idx) => {
+      const stageUpper = (proj.current_stage || 'D0').toUpperCase();
+      const badgeStyle = stageColors[stageUpper] || 'bg-gray-100 text-gray-800 border-gray-300';
+      const updatedDate = proj.updated_at ? new Date(proj.updated_at).toLocaleDateString() : '-';
+      const rowBg = idx % 2 === 0 ? 'bg-white' : 'bg-[#F8FAFC]';
+      const shortId = typeof proj.id === 'string' && proj.id.length > 8 ? proj.id.slice(0, 8) : proj.id;
+
+      return `
+        <tr data-project-id="${proj.id}" class="${rowBg} hover:bg-[#EFF6FF] cursor-pointer border-b border-gray-200">
+          <td class="py-1.5 px-2.5 text-center font-mono font-bold text-gray-700 border-r border-gray-200">I${shortId}</td>
+          <td class="py-1.5 px-2.5 font-semibold text-gray-900 border-r border-gray-200">
+            <div class="truncate max-w-[360px]" title="${proj.title}">${proj.title}</div>
+            ${proj.description ? `<div class="text-[11px] text-gray-500 font-normal truncate max-w-[360px]">${proj.description}</div>` : ''}
+          </td>
+          <td class="py-1.5 px-2.5 text-center border-r border-gray-200">
+            <span class="inline-block px-1.5 py-0.5 text-[11px] font-bold border ${badgeStyle}">${stageUpper}</span>
+          </td>
+          <td class="py-1.5 px-2.5 text-gray-800 border-r border-gray-200">
+            <div class="font-semibold truncate">${proj.suggester_name || 'User'}</div>
+            <div class="text-[11px] text-gray-500 font-mono truncate">${proj.suggester_email || '-'}</div>
+          </td>
+          <td class="py-1.5 px-2.5 text-gray-600 border-r border-gray-200">${proj.workstream || 'Operations'}</td>
+          <td class="py-1.5 px-2.5 text-gray-600 border-r border-gray-200">${proj.ebitda_category || 'Cost Reduction'}</td>
+          <td class="py-1.5 px-2.5 text-gray-500 font-mono border-r border-gray-200">${updatedDate}</td>
+          <td class="py-1.5 px-2.5 text-center">
+            <button class="px-2 py-0.5 text-xs font-semibold bg-[#1F3864] hover:bg-[#152747] text-white border border-[#152747]">
+              View Details
+            </button>
+          </td>
+        </tr>
+      `;
+    }).join('');
+
+    tbody.querySelectorAll('tr[data-project-id]').forEach(row => {
+      row.addEventListener('click', () => {
+        renderProjectDetail(row.dataset.projectId);
+      });
+    });
+  }
+
+  searchInput.addEventListener('input', renderAdminRows);
+  ownerFilter.addEventListener('change', renderAdminRows);
+  stageFilter.addEventListener('change', renderAdminRows);
+  workstreamFilter.addEventListener('change', renderAdminRows);
+
+  renderAdminRows();
+}
+
+// ==========================================
+// 6. PROJECT DETAIL & WORKFLOW PAGE (#project/:id)
 // ==========================================
 
 async function renderProjectDetail(id) {
@@ -667,14 +916,19 @@ async function renderProjectDetail(id) {
   `;
   bindNavEvents();
 
-  let proj = {};
+  let proj = null;
   let history = [];
   try {
     const [p, h] = await Promise.all([api.getProject(id), api.getProjectHistory(id).catch(() => [])]);
     proj = p;
     history = h;
-  } catch (err) {
-    showToast('Error loading project: ' + err.message, 'error');
+  } catch {
+    proj = null;
+  }
+
+  if (!proj) {
+    showToast('Project not found or access denied', 'error');
+    window.location.hash = '#dashboard';
     renderDashboard();
     return;
   }
@@ -725,7 +979,7 @@ async function renderProjectDetail(id) {
         </div>
       </div>
 
-      <!-- Step Navigation: Plain Bracketed Labels -->
+      <!-- Step Navigation: Plain Bracketed Labels (No D4 Financial Matrix link) -->
       <div class="bg-white border border-gray-300 p-2.5 mb-3 flex flex-wrap items-center justify-between gap-1 select-none">
         <div class="flex items-center gap-1 text-xs">
           <span class="font-bold text-gray-700">[Stage Workflow]:</span>
@@ -769,8 +1023,8 @@ async function renderProjectDetail(id) {
                 <td class="text-gray-800 border-b border-gray-200">${proj.description || proj.title}</td>
               </tr>
               <tr>
-                <td class="bg-[#F8FAFC] font-semibold text-gray-700 border-r border-b border-gray-200">Suggester</td>
-                <td class="text-gray-900 border-b border-gray-200">${proj.suggester_name || '-'}</td>
+                <td class="bg-[#F8FAFC] font-semibold text-gray-700 border-r border-b border-gray-200">Suggester / Owner</td>
+                <td class="text-gray-900 border-b border-gray-200 font-semibold">${proj.suggester_name || '-'}</td>
               </tr>
               <tr>
                 <td class="bg-[#F8FAFC] font-semibold text-gray-700 border-r border-b border-gray-200">Suggester Email</td>
@@ -923,13 +1177,8 @@ async function renderProjectDetail(id) {
       <!-- Bottom Navigation Toolbar -->
       <div class="flex items-center justify-between border-t border-gray-300 pt-3">
         <button id="btn-back-bottom" class="px-3 py-1.5 bg-gray-100 hover:bg-gray-200 text-gray-800 border border-gray-300 font-semibold text-xs">
-          &lt;&lt; Back to Pipeline Dashboard
+          &lt;&lt; Back to Dashboard
         </button>
-        <div class="flex items-center gap-2">
-          <button onclick="window.location.hash='#grid'" class="px-3 py-1.5 bg-white hover:bg-gray-100 text-gray-800 border border-gray-300 font-semibold text-xs">
-            Open D4 Financial Matrix &gt;
-          </button>
-        </div>
       </div>
 
     </main>
@@ -997,11 +1246,10 @@ async function renderProjectDetail(id) {
 
     const nextStageIndex = currentStageIndex + 1;
     const to_stage = nextStageIndex < stages.length ? stages[nextStageIndex] : currentStage;
-    const suggesterName = proj.suggester_name || (proj.suggester_email ? proj.suggester_email.split('@')[0] : 'Owner');
 
     showModal(
       'Confirm Stage Gate Advancement',
-      `Advance initiative "${proj.title}" from Stage [${currentStage}] to [${to_stage}]? An automated confirmation will be recorded.`,
+      `Advance initiative "${proj.title}" from Stage [${currentStage}] to [${to_stage}]?`,
       'Confirm & Advance',
       async () => {
         submitBtn.textContent = 'Submitting...';
@@ -1017,199 +1265,6 @@ async function renderProjectDetail(id) {
         }
       }
     );
-  });
-}
-
-// ==========================================
-// 6. D4 SIGN-OFF SPREADSHEET GRID (#grid)
-// ==========================================
-
-function renderSpreadsheetGrid() {
-  document.title = "D4 Financial Sign-Off Matrix — Lakshya";
-  window.location.hash = '#grid';
-  const app = document.getElementById('app');
-
-  const months = ['Oct', 'Nov', 'Dec', 'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep'];
-
-  const defaultRows = [
-    { key: 'copq_charges', label: '1. COPQ Charges (Scrap / Rejection Incurred)', type: 'currency', color: 'bg-[#FEF9C3]', defaultVal: 12.5 },
-    { key: 'copq_saved', label: '2. COPQ Saved (Quality Improvement Benefit)', type: 'currency', color: 'bg-[#FEF08A] font-semibold', defaultVal: 18.0 },
-    { key: 'parts_inspected', label: '3. No. of Parts Inspected / Handled (Qty)', type: 'number', color: 'bg-[#FFEDD5]', defaultVal: 2500 },
-    { key: 'manhours_saved', label: '4. Man-hours Saved per Part (min/pc)', type: 'number', color: 'bg-[#FED7AA]', defaultVal: 4.5 },
-    { key: 'manpower_cost_saved', label: '5. Manpower Cost Saved (Rs. Lakhs)', type: 'currency', color: 'bg-[#FDBA74] font-semibold', defaultVal: 14.2 },
-    { key: 'investment_cost', label: '6. Investment / Tooling Cost Incurred (Capex)', type: 'currency', color: 'bg-[#FEE2E2]', defaultVal: 8.0 },
-  ];
-
-  app.innerHTML = `
-    ${getTopNavHtml('grid')}
-    
-    <main class="p-3 md:p-4 max-w-[1440px] mx-auto text-gray-900 text-xs">
-      
-      <!-- Top Title & KPI Summary Bar -->
-      <div class="flex flex-wrap items-center justify-between gap-2 mb-3 pb-2 border-b border-gray-300">
-        <div>
-          <h1 class="text-base font-bold text-[#1F3864] uppercase tracking-tight">D4 FINANCIAL SIGN-OFF &amp; SAVINGS MATRIX</h1>
-          <p class="text-xs text-gray-500">Spreadsheet calculation grid: Monthly savings breakdown (Oct – Sep) &amp; EBITDA impact.</p>
-        </div>
-        <div class="flex items-center gap-2">
-          <button id="btn-save-grid" class="px-3.5 py-1.5 bg-[#1F3864] hover:bg-[#152747] text-white font-semibold text-xs border border-[#152747] transition">
-            Save Financial Matrix
-          </button>
-          <button onclick="window.location.hash='#dashboard'" class="px-3 py-1.5 bg-gray-100 hover:bg-gray-200 text-gray-800 border border-gray-300 font-semibold text-xs">
-            Return to Dashboard
-          </button>
-        </div>
-      </div>
-
-      <!-- KPI Metric Boxes -->
-      <div class="grid grid-cols-2 sm:grid-cols-4 gap-2 mb-3">
-        <div class="border border-gray-300 bg-white p-2 text-center">
-          <div class="text-[10px] uppercase text-gray-500 font-semibold">Total Direct Savings (YTD)</div>
-          <div id="kpi-total-savings" class="text-base font-bold text-[#1F3864] font-mono">Rs. 386.40 L</div>
-        </div>
-        <div class="border border-gray-300 bg-white p-2 text-center">
-          <div class="text-[10px] uppercase text-gray-500 font-semibold">Total Manpower Saved (YTD)</div>
-          <div id="kpi-total-manpower" class="text-base font-bold text-[#1F3864] font-mono">Rs. 170.40 L</div>
-        </div>
-        <div class="border border-gray-300 bg-white p-2 text-center">
-          <div class="text-[10px] uppercase text-gray-500 font-semibold">Total Investment (Capex)</div>
-          <div id="kpi-total-investment" class="text-base font-bold text-gray-700 font-mono">Rs. 96.00 L</div>
-        </div>
-        <div class="border border-gray-300 bg-white p-2 text-center">
-          <div class="text-[10px] uppercase text-gray-500 font-semibold">Overall Net ROI Multiple</div>
-          <div id="kpi-total-roi" class="text-base font-bold text-[#16A34A] font-mono">4.03x</div>
-        </div>
-      </div>
-
-      <!-- Excel Spreadsheet Table -->
-      <div class="border border-black bg-white overflow-x-auto mb-3 shadow-sm">
-        <table class="excel-table w-full text-xs" style="border-collapse: collapse;">
-          <thead>
-            <tr class="bg-[#1F3864] text-white">
-              <th class="py-2 px-2.5 font-bold text-white border border-black min-w-[280px]">Cost Category / Savings Lever (Rs. Lakhs)</th>
-              ${months.map(m => `<th class="py-2 px-1.5 font-bold text-white border border-black text-right w-16">${m}</th>`).join('')}
-              <th class="py-2 px-2 font-bold text-white bg-[#152747] border border-black text-right min-w-[80px]">TOTAL (YTD)</th>
-            </tr>
-          </thead>
-          <tbody id="grid-matrix-body">
-            ${defaultRows.map(row => `
-              <tr class="${row.color} border border-black">
-                <td class="py-1 px-2.5 font-medium border border-black">${row.label}</td>
-                ${months.map((m, colIdx) => `
-                  <td class="p-0 border border-black">
-                    <input type="number" step="0.1" class="excel-cell-input grid-input" data-row="${row.key}" data-col="${colIdx}" value="${row.defaultVal}" />
-                  </td>
-                `).join('')}
-                <td class="py-1 px-2 font-bold text-right font-mono border border-black row-total" data-row-total="${row.key}">0.00</td>
-              </tr>
-            `).join('')}
-            
-            <!-- Subtotal: Operational Savings (Light Blue) -->
-            <tr class="bg-[#DBEAFE] font-bold border border-black text-gray-900">
-              <td class="py-1.5 px-2.5 border border-black">SUBTOTAL: Direct Operational Savings (COPQ + Manpower)</td>
-              ${months.map((m, colIdx) => `
-                <td class="py-1.5 px-1.5 text-right font-mono border border-black col-subtotal" data-subtotal-col="${colIdx}">0.00</td>
-              `).join('')}
-              <td id="grand-subtotal" class="py-1.5 px-2 font-bold text-right font-mono border border-black bg-[#BFDBFE]">0.00</td>
-            </tr>
-
-            <!-- Grand Total: EBITDA / Value Sign-Off (Navy Row) -->
-            <tr class="bg-[#1F3864] text-white font-bold border border-black">
-              <td class="py-2 px-2.5 border border-black text-white uppercase tracking-wider">TOTAL COST SAVING — EBITDA / VALUE SIGN-OFF</td>
-              ${months.map((m, colIdx) => `
-                <td class="py-2 px-1.5 text-right font-mono border border-black text-white col-net-ebitda" data-net-col="${colIdx}">0.00</td>
-              `).join('')}
-              <td id="grand-ebitda-total" class="py-2 px-2 font-bold text-right font-mono border border-black bg-[#152747] text-[#00F0FF] text-sm">0.00</td>
-            </tr>
-          </tbody>
-        </table>
-      </div>
-
-      <!-- Legend -->
-      <div class="bg-[#F8FAFC] border border-gray-300 p-2 text-[11px] text-gray-600 flex flex-wrap items-center justify-between gap-2">
-        <div class="flex items-center gap-3">
-          <span class="font-bold text-gray-700">Cell Color Legend:</span>
-          <span class="inline-flex items-center gap-1"><span class="w-3 h-3 bg-[#FEF9C3] border border-gray-400"></span> Yellow = COPQ Savings</span>
-          <span class="inline-flex items-center gap-1"><span class="w-3 h-3 bg-[#FFEDD5] border border-gray-400"></span> Orange = Manpower Efforts</span>
-          <span class="inline-flex items-center gap-1"><span class="w-3 h-3 bg-[#FEE2E2] border border-gray-400"></span> Red/Pink = Capex</span>
-          <span class="inline-flex items-center gap-1"><span class="w-3 h-3 bg-[#DBEAFE] border border-gray-400"></span> Light Blue = Subtotal</span>
-        </div>
-        <div>
-          <span>All monetary inputs in Rs. Lakhs (INR). Changes compute dynamically.</span>
-        </div>
-      </div>
-
-    </main>
-  `;
-
-  bindNavEvents();
-
-  function recalculateGrid() {
-    const inputs = document.querySelectorAll('.grid-input');
-    const matrix = {};
-
-    inputs.forEach(input => {
-      const r = input.dataset.row;
-      const c = parseInt(input.dataset.col, 10);
-      if (!matrix[r]) matrix[r] = [];
-      matrix[r][c] = parseFloat(input.value) || 0;
-    });
-
-    let copqSavedSum = 0;
-    let mpSavedSum = 0;
-    let invSum = 0;
-
-    defaultRows.forEach(row => {
-      const vals = matrix[row.key] || [];
-      const sum = vals.reduce((a, b) => a + b, 0);
-      const totalEl = document.querySelector(`[data-row-total="${row.key}"]`);
-      if (totalEl) totalEl.textContent = sum.toFixed(2);
-
-      if (row.key === 'copq_saved') copqSavedSum = sum;
-      if (row.key === 'manpower_cost_saved') mpSavedSum = sum;
-      if (row.key === 'investment_cost') invSum = sum;
-    });
-
-    let totalDirectSavings = 0;
-    let totalNetEbitda = 0;
-
-    for (let c = 0; c < months.length; c++) {
-      const copq = (matrix['copq_saved'] && matrix['copq_saved'][c]) || 0;
-      const mp = (matrix['manpower_cost_saved'] && matrix['manpower_cost_saved'][c]) || 0;
-      const inv = (matrix['investment_cost'] && matrix['investment_cost'][c]) || 0;
-
-      const subtotal = copq + mp;
-      const netEbitda = subtotal - inv;
-
-      totalDirectSavings += subtotal;
-      totalNetEbitda += netEbitda;
-
-      const subtotalEl = document.querySelector(`[data-subtotal-col="${c}"]`);
-      if (subtotalEl) subtotalEl.textContent = subtotal.toFixed(2);
-
-      const netEl = document.querySelector(`[data-net-col="${c}"]`);
-      if (netEl) netEl.textContent = netEbitda.toFixed(2);
-    }
-
-    const grandSubtotalEl = document.getElementById('grand-subtotal');
-    if (grandSubtotalEl) grandSubtotalEl.textContent = totalDirectSavings.toFixed(2);
-
-    const grandEbitdaEl = document.getElementById('grand-ebitda-total');
-    if (grandEbitdaEl) grandEbitdaEl.textContent = 'Rs. ' + totalNetEbitda.toFixed(2) + ' L';
-
-    document.getElementById('kpi-total-savings').textContent = 'Rs. ' + copqSavedSum.toFixed(2) + ' L';
-    document.getElementById('kpi-total-manpower').textContent = 'Rs. ' + mpSavedSum.toFixed(2) + ' L';
-    document.getElementById('kpi-total-investment').textContent = 'Rs. ' + invSum.toFixed(2) + ' L';
-    const roi = invSum > 0 ? (totalDirectSavings / invSum).toFixed(2) : 'N/A';
-    document.getElementById('kpi-total-roi').textContent = roi !== 'N/A' ? roi + 'x' : '0.00x';
-  }
-
-  const tbody = document.getElementById('grid-matrix-body');
-  tbody.addEventListener('input', recalculateGrid);
-  recalculateGrid();
-
-  document.getElementById('btn-save-grid').addEventListener('click', () => {
-    showToast('Financial matrix spreadsheet saved successfully.', 'success');
   });
 }
 
@@ -1472,7 +1527,6 @@ async function renderProfile() {
 
   bindNavEvents();
 
-  // In-place edit for Full Name
   const editBtn = document.getElementById('profile-edit-btn');
   const cancelBtn = document.getElementById('btn-cancel-name');
   const nameDisplay = document.getElementById('name-display-container');
@@ -1524,7 +1578,6 @@ async function renderProfile() {
     }
   });
 
-  // Password update form
   const pwdForm = document.getElementById('password-change-form');
   const currentPwdInput = document.getElementById('current-pwd');
   const newPwdInput = document.getElementById('new-pwd');
@@ -1605,14 +1658,21 @@ async function handleRouting() {
     renderDashboard();
   } else if (hash === '#dashboard') {
     renderDashboard();
-  } else if (hash === '#grid') {
-    renderSpreadsheetGrid();
+  } else if (hash === '#admin') {
+    if (activeUser?.role !== 'admin') {
+      showToast('Access restricted to administrators', 'error');
+      window.location.hash = '#dashboard';
+      renderDashboard();
+    } else {
+      renderAdminConsole();
+    }
   } else if (hash.startsWith('#project/')) {
     const id = hash.split('/')[1];
     renderProjectDetail(id);
   } else if (hash === '#profile') {
     renderProfile();
   } else {
+    window.location.hash = '#dashboard';
     renderDashboard();
   }
 }

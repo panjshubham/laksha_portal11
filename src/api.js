@@ -172,12 +172,16 @@ export const api = {
     const { data: { user } } = await supabase.auth.getUser();
     const payload = {
       ...projectData,
+      owner_id: user ? user.id : null,
       current_stage: 'D0',
       created_at: new Date().toISOString(),
       updated_at: new Date().toISOString()
     };
     if (user && !payload.suggester_email) {
       payload.suggester_email = user.email;
+    }
+    if (user && !payload.suggester_name) {
+      payload.suggester_name = user.user_metadata?.name || user.email?.split('@')[0];
     }
 
     const { data, error } = await supabase
