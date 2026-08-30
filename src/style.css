@@ -2,73 +2,80 @@
 @tailwind components;
 @tailwind utilities;
 
-body {
-  @apply bg-obsidian text-white font-sans;
-  margin: 0;
-  padding: 0;
-  overflow-x: hidden;
+@layer base {
+  body {
+    background-color: #FFFFFF;
+    color: #1E293B;
+    font-family: 'Segoe UI', Arial, -apple-system, BlinkMacSystemFont, Roboto, sans-serif;
+    margin: 0;
+    padding: 0;
+    font-size: 13px;
+    line-height: 1.4;
+  }
+
+  input, select, textarea, button {
+    font-family: inherit;
+    font-size: 13px;
+  }
 }
 
-#canvas-container {
-  position: fixed;
-  top: 0;
-  left: 0;
-  width: 100vw;
-  height: 100vh;
-  z-index: -1;
-  pointer-events: none;
+/* Corporate Excel / SharePoint styling helpers */
+.excel-table {
+  border-collapse: collapse;
+  width: 100%;
 }
 
-.mist-overlay {
-    background: radial-gradient(circle at center, transparent 0%, #08090A 100%);
-    pointer-events: none;
+.excel-table th,
+.excel-table td {
+  border: 1px solid #CBD5E1;
+  padding: 4px 8px;
+  font-size: 12px;
 }
 
-.obsidian-bg {
-    background-color: #08090A;
+.excel-table th {
+  background-color: #F1F5F9;
+  color: #1E293B;
+  font-weight: 600;
+  text-align: left;
 }
 
-.cyan-text {
-    color: #00F0FF;
+.excel-table tr:nth-child(even) td {
+  background-color: #F8FAFC;
 }
 
-.cyan-glow:hover {
-    box-shadow: 0 0 15px rgba(0, 240, 255, 0.4);
-    transition: box-shadow 0.3s ease;
+.excel-table tr:hover td {
+  background-color: #EDF2F7;
 }
 
-.glass-pill {
-    background: rgba(255, 255, 255, 0.05);
-    backdrop-filter: blur(10px);
-    border: 1px solid rgba(255, 255, 255, 0.1);
+.excel-cell-input {
+  width: 100%;
+  border: none;
+  background: transparent;
+  padding: 2px 4px;
+  font-size: 12px;
+  font-family: 'Consolas', 'Courier New', monospace;
+  text-align: right;
+  outline: none;
 }
 
-.force-dark-text {
-    color: #ffffff;
+.excel-cell-input:focus {
+  background-color: #FFFFFF;
+  box-shadow: inset 0 0 0 1px #1F3864;
 }
 
-@layer utilities {
-  .font-display-lg { @apply font-sans font-bold text-6xl tracking-tighter; }
-  .text-display-lg { @apply text-6xl; }
-  
-  .font-headline-xl { @apply font-sans font-bold text-xl; }
-  .text-headline-xl { @apply text-xl; }
-  
-  .font-headline-lg { @apply font-sans font-bold text-lg; }
-  .text-headline-lg { @apply text-lg; }
-  
-  .font-headline-md { @apply font-sans font-bold text-base; }
-  .text-headline-md { @apply text-base; }
-  
-  .font-body-md { @apply font-sans text-base; }
-  .text-body-md { @apply text-base; }
-  
-  .font-body-sm { @apply font-sans text-sm; }
-  .text-body-sm { @apply text-sm; }
-  
-  .font-label-caps { @apply font-sans font-semibold text-xs tracking-wider uppercase; }
-  .text-label-caps { @apply text-xs; }
-  
-  .font-data-tabular { @apply font-mono text-sm; }
-  .text-data-tabular { @apply text-sm; }
+/* Custom Scrollbar for dense tables */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
 }
+::-webkit-scrollbar-track {
+  background: #F1F5F9;
+}
+::-webkit-scrollbar-thumb {
+  background: #CBD5E1;
+  border-radius: 0px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #94A3B8;
+}
+

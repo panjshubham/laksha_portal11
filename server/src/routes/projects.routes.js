@@ -28,6 +28,31 @@ projectsRouter.get('/', authMiddleware, async (req, res) => {
   }
 });
 
+// POST /api/projects (Create New Idea)
+projectsRouter.post('/', authMiddleware, async (req, res) => {
+  try {
+    const { title, description, suggester_name, suggester_email, workstream, ebitda_category } = req.body;
+    if (!title) return res.status(400).json({ error: 'Title is required' });
+    
+    const result = await query(
+      `INSERT INTO projects (title, description, suggester_name, suggester_email, workstream, ebitda_category, current_stage)
+       VALUES ($1, $2, $3, $4, $5, $6, 'D0')
+       RETURNING *`,
+      [
+        title,
+        description || '',
+        suggester_name || req.user.name || 'User',
+        suggester_email || req.user.email || 'user@lakshya.com',
+        workstream || 'Operations',
+        ebitda_category || 'Cost Reduction'
+      ]
+    );
+    res.status(201).json(result.rows[0]);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // GET /api/projects/:id
 projectsRouter.get('/:id', authMiddleware, async (req, res) => {
   try {

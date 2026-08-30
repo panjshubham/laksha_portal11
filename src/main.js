@@ -1,62 +1,78 @@
-import { initThreeScene } from './threeScene.js';
 import { api } from './api.js';
+import { supabase } from './supabase.js';
+
+// ==========================================
+// STATE MANAGEMENT & SESSION
+// ==========================================
+let activeUser = null;
+
+async function refreshActiveUser() {
+  try {
+    activeUser = await api.getCurrentUser();
+  } catch {
+    activeUser = null;
+  }
+  return activeUser;
+}
+
+// ==========================================
+// UTILITY HELPERS: TOASTS & MODALS
+// ==========================================
 
 function showToast(message, type = 'info') {
   let container = document.getElementById('toast-container');
   if (!container) {
     container = document.createElement('div');
     container.id = 'toast-container';
-    container.className = 'fixed top-4 right-4 z-50 flex flex-col gap-2 pointer-events-none';
+    container.className = 'fixed top-3 right-3 z-50 flex flex-col gap-1.5 pointer-events-none';
     document.body.appendChild(container);
   }
   
   const toast = document.createElement('div');
-  const colors = {
-    success: 'bg-stage-d4-emerald text-white',
-    error: 'bg-error text-on-error',
-    info: 'bg-stage-d0-blue text-white',
-    warning: 'bg-stage-d1-amber text-white'
+  const typeStyles = {
+    success: 'bg-[#16A34A] text-white border-[#15803D]',
+    error: 'bg-[#DC2626] text-white border-[#B91C1C]',
+    info: 'bg-[#1F3864] text-white border-[#152747]',
+    warning: 'bg-[#D97706] text-white border-[#B45309]'
   };
-  toast.className = `${colors[type]} px-4 py-3 rounded shadow-lg flex items-center justify-between min-w-[250px] transition-all duration-300 transform translate-x-full pointer-events-auto`;
   
+  toast.className = `${typeStyles[type] || typeStyles.info} border px-3 py-2 text-xs font-sans shadow-md flex items-center justify-between min-w-[240px] pointer-events-auto transition-opacity duration-200`;
   toast.innerHTML = `
-    <span class="font-body-sm font-medium">${message}</span>
-    <button class="ml-4 text-white hover:text-gray-200 focus:outline-none">&times;</button>
+    <span class="font-medium">${message}</span>
+    <button class="ml-3 text-white/80 hover:text-white font-bold text-sm leading-none focus:outline-none">&times;</button>
   `;
   
   toast.querySelector('button').onclick = () => {
     toast.classList.add('opacity-0');
-    setTimeout(() => toast.remove(), 300);
+    setTimeout(() => toast.remove(), 200);
   };
   
   container.appendChild(toast);
-  
-  requestAnimationFrame(() => {
-    toast.classList.remove('translate-x-full');
-  });
-  
   setTimeout(() => {
     if (toast.parentElement) {
       toast.classList.add('opacity-0');
-      setTimeout(() => toast.remove(), 300);
+      setTimeout(() => toast.remove(), 200);
     }
-  }, 4000);
+  }, 3500);
 }
 
 function showModal(title, body, confirmText, onConfirm) {
   const overlay = document.createElement('div');
-  overlay.className = 'fixed inset-0 bg-obsidian/80 backdrop-blur-sm z-50 flex items-center justify-center p-4 transition-opacity duration-200';
+  overlay.className = 'fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4';
   
   const modal = document.createElement('div');
-  modal.className = 'bg-surface-container-lowest border border-slate-border rounded-lg shadow-2xl max-w-md w-full overflow-hidden transform scale-95 transition-transform duration-200';
+  modal.className = 'bg-white border border-gray-400 shadow-xl max-w-md w-full overflow-hidden text-xs';
   
   modal.innerHTML = `
-    <div class="p-6">
-      <h3 class="font-headline-lg text-primary mb-2">${title}</h3>
-      <p class="font-body-md text-secondary mb-6">${body}</p>
-      <div class="flex justify-end gap-3">
-        <button class="px-4 py-2 font-body-sm font-semibold text-secondary hover:bg-surface-container-low rounded border border-transparent transition-colors" id="modal-cancel">Cancel</button>
-        <button class="px-4 py-2 font-body-sm font-semibold bg-primary text-on-primary rounded hover:opacity-90 transition-opacity" id="modal-confirm">${confirmText}</button>
+    <div class="bg-[#1F3864] text-white px-4 py-2 flex items-center justify-between">
+      <h3 class="font-bold text-xs uppercase tracking-wider">${title}</h3>
+      <button id="modal-x" class="text-white/80 hover:text-white font-bold text-sm leading-none">&times;</button>
+    </div>
+    <div class="p-4 bg-white text-gray-800">
+      <p class="mb-4">${body}</p>
+      <div class="flex justify-end gap-2 pt-2 border-t border-gray-200">
+        <button class="px-3 py-1.5 text-xs font-semibold bg-gray-100 hover:bg-gray-200 text-gray-700 border border-gray-300" id="modal-cancel">Cancel</button>
+        <button class="px-3 py-1.5 text-xs font-semibold bg-[#1F3864] hover:bg-[#152747] text-white border border-[#152747]" id="modal-confirm">${confirmText}</button>
       </div>
     </div>
   `;
@@ -64,16 +80,8 @@ function showModal(title, body, confirmText, onConfirm) {
   overlay.appendChild(modal);
   document.body.appendChild(overlay);
   
-  requestAnimationFrame(() => {
-    modal.classList.remove('scale-95');
-    modal.classList.add('scale-100');
-  });
-  
-  const close = () => {
-    overlay.classList.add('opacity-0');
-    setTimeout(() => overlay.remove(), 200);
-  };
-  
+  const close = () => overlay.remove();
+  overlay.querySelector('#modal-x').onclick = close;
   overlay.querySelector('#modal-cancel').onclick = close;
   overlay.querySelector('#modal-confirm').onclick = () => {
     close();
@@ -81,201 +89,343 @@ function showModal(title, body, confirmText, onConfirm) {
   };
 }
 
+// ==========================================
+// TOP NAVBAR COMPONENT
+// ==========================================
 
-let ambientOscillator = null;
-let audioContext = null;
-
-function toggleAudio(btn) {
-  if (!audioContext) {
-    audioContext = new (window.AudioContext || window.webkitAudioContext)();
-  }
+function getTopNavHtml(activeTab = 'dashboard') {
+  const user = activeUser || { name: 'User', email: '', role: 'member' };
+  const userName = user.name || (user.email ? user.email.split('@')[0] : 'User');
+  const userRole = (user.role || 'member').toUpperCase();
   
-  if (audioContext.state === 'suspended') {
-    audioContext.resume();
-  }
-
-  if (ambientOscillator) {
-    ambientOscillator.stop();
-    ambientOscillator.disconnect();
-    ambientOscillator = null;
-    btn.textContent = '[ Audio Toggle: OFF ]';
-    return;
-  }
-
-  ambientOscillator = audioContext.createOscillator();
-  const gainNode = audioContext.createGain();
-  
-  ambientOscillator.type = 'sine';
-  ambientOscillator.frequency.setValueAtTime(55, audioContext.currentTime); // Low drone (A1)
-  
-  gainNode.gain.setValueAtTime(0, audioContext.currentTime);
-  gainNode.gain.linearRampToValueAtTime(0.1, audioContext.currentTime + 2); // fade in
-  
-  ambientOscillator.connect(gainNode);
-  gainNode.connect(audioContext.destination);
-  
-  ambientOscillator.start();
-  btn.textContent = '[ Audio Toggle: ON ]';
+  return `
+    <header class="bg-[#1F3864] text-white border-b border-[#152747] px-4 py-2.5 flex flex-wrap items-center justify-between shadow-sm select-none">
+      <div class="flex items-center gap-3">
+        <div class="bg-[#2F5597] text-white font-bold text-xs px-2 py-0.5 border border-white/30 tracking-wider">
+          LAKSHYA
+        </div>
+        <div class="flex flex-col">
+          <span class="font-bold text-sm text-white tracking-wide uppercase">STAGE-GATE PIPELINE DASHBOARD</span>
+          <span class="text-[10px] text-[#D9E1F2] hidden sm:block">Innovation &amp; Operational Excellence Portal</span>
+        </div>
+      </div>
+      
+      <div class="flex items-center gap-2 mt-2 sm:mt-0 text-xs">
+        <div class="hidden md:flex items-center gap-1.5 text-white/90 mr-2 border-r border-white/20 pr-3">
+          <span>User: <strong class="text-white">${userName}</strong> <span class="text-gray-300">(${user.email || ''})</span></span>
+          <span class="text-[10px] bg-white/20 text-white px-1.5 py-0.2 border border-white/30 font-semibold uppercase">[${userRole}]</span>
+        </div>
+        
+        <button onclick="window.location.hash='#dashboard'" class="px-2.5 py-1 text-xs border ${activeTab === 'dashboard' ? 'bg-white text-[#1F3864] font-bold border-white' : 'bg-white/10 hover:bg-white/20 text-white border-white/30'} transition">
+          Dashboard
+        </button>
+        <button onclick="window.location.hash='#grid'" class="px-2.5 py-1 text-xs border ${activeTab === 'grid' ? 'bg-white text-[#1F3864] font-bold border-white' : 'bg-white/10 hover:bg-white/20 text-white border-white/30'} transition">
+          Excel Grid View
+        </button>
+        <button id="btn-new-idea-nav" class="px-2.5 py-1 text-xs border bg-[#16A34A] hover:bg-[#15803D] text-white font-semibold border-green-700 transition">
+          + New Idea
+        </button>
+        <button onclick="window.location.hash='#profile'" class="px-2.5 py-1 text-xs border ${activeTab === 'profile' ? 'bg-white text-[#1F3864] font-bold border-white' : 'bg-white/10 hover:bg-white/20 text-white border-white/30'} transition">
+          Profile
+        </button>
+        <button id="btn-logout-nav" class="px-2.5 py-1 text-xs border bg-white/10 hover:bg-white/20 text-white border-white/30 transition">
+          Log Out
+        </button>
+      </div>
+    </header>
+  `;
 }
 
-function renderLandingPage() {
+function bindNavEvents() {
+  const newIdeaBtn = document.getElementById('btn-new-idea-nav');
+  if (newIdeaBtn) {
+    newIdeaBtn.addEventListener('click', () => showNewIdeaModal());
+  }
+  const logoutBtn = document.getElementById('btn-logout-nav');
+  if (logoutBtn) {
+    logoutBtn.addEventListener('click', async () => {
+      await api.signOut();
+      activeUser = null;
+      window.location.hash = '#signin';
+    });
+  }
+}
+
+// ==========================================
+// 1. SIGN IN PAGE (#signin)
+// ==========================================
+
+function renderSignIn(flashMsg = '') {
+  document.title = "Sign In — Lakshya Innovation Portal";
   const app = document.getElementById('app');
+
   app.innerHTML = `
-    <!-- TopNavBar (Re-interpreted for dark mode context) -->
-    <header class="absolute top-0 w-full z-20">
-    <div class="flex justify-between items-center w-full px-margin-desktop py-stack-md max-w-container-max-width mx-auto">
-    <div class="flex items-baseline gap-4">
-    <h1 class="font-display-lg text-display-lg font-bold tracking-tighter force-dark-text m-0 p-0 leading-none">LAKSHYA</h1>
-    <span class="font-data-tabular text-data-tabular text-on-surface-variant cyan-text tracking-widest uppercase">// System Access 2026</span>
-    </div>
-    <nav class="flex items-center gap-6">
-    <!-- Hiding standard nav links per intent, keeping Admin Console -->
-    <a class="glass-pill px-6 py-2 rounded-full font-label-caps text-label-caps text-white hover:bg-white/10 transition-colors uppercase flex items-center gap-2" href="#">
-                        [ Console ]
-                        <span class="material-symbols-outlined text-sm">settings_input_component</span>
-    </a>
-    </nav>
-    </div>
-    </header>
-
-    <div class="absolute inset-0 w-full h-full mist-overlay z-10"></div>
-
-    <!-- Center Content Canvas -->
-    <main class="absolute inset-0 z-20 flex flex-col items-center justify-center pointer-events-none">
-    <div class="pointer-events-auto flex flex-col items-center text-center max-w-2xl px-6">
-    <h2 class="font-display-lg text-display-lg md:text-6xl font-bold tracking-tighter mb-12 force-dark-text uppercase">
-                    Innovation<br>Workflow Portal
-                </h2>
-    <button data-login-btn class="bg-white text-black font-body-md text-body-md font-bold px-12 py-4 rounded-full cyan-glow transition-all mb-6 flex items-center justify-center w-full md:w-auto hover:bg-gray-100">
-                    Sign In with SSO / Enterprise Login
-                </button>
-    <a class="font-data-tabular text-data-tabular cyan-text hover:text-white transition-colors flex items-center gap-2" href="#">
-                    Admin Access & Permissions <span class="material-symbols-outlined text-sm">arrow_forward</span>
-    </a>
-    </div>
-    </main>
-    <!-- Footer -->
-    <footer class="absolute bottom-0 w-full z-20">
-    <div class="flex justify-between items-center w-full px-margin-desktop py-stack-lg max-w-container-max-width mx-auto font-data-tabular text-data-tabular text-on-surface-variant">
-    <button data-audio-btn class="glass-pill px-4 py-1.5 rounded uppercase hover:text-white transition-colors flex items-center gap-2 force-dark-text">
-                    [ Audio Toggle: OFF ]
-                </button>
-    <div class="glass-pill px-4 py-1.5 rounded uppercase cyan-text flex items-center gap-2">
-                    [ 60 FPS • Diagnostic Status: Optimal ]
-                </div>
-    </div>
-    </footer>
-
-    <!-- Login Modal Placeholder -->
-    <div id="login-modal" class="hidden fixed inset-0 bg-black/80 flex justify-center items-center backdrop-blur-sm z-50">
-      <div class="bg-obsidian border border-gray-700 p-8 rounded-xl w-96 shadow-2xl">
-        <h2 id="modal-title" class="text-2xl mb-6 font-semibold">Sign In</h2>
-        <form id="login-form" class="flex flex-col gap-4">
-          <input type="text" id="name" placeholder="Full Name" class="hidden bg-gray-900 border border-gray-700 p-3 rounded text-white focus:outline-none focus:border-cyan-500">
-          <input type="email" id="email" placeholder="Email Address" class="bg-gray-900 border border-gray-700 p-3 rounded text-white focus:outline-none focus:border-cyan-500" required>
-          <input type="password" id="password" placeholder="Password" class="bg-gray-900 border border-gray-700 p-3 rounded text-white focus:outline-none focus:border-cyan-500" required>
-          <button type="submit" id="submit-btn" class="bg-cyan-600 hover:bg-cyan-700 text-black p-3 rounded font-bold mt-2 transition">Continue</button>
-        </form>
-        <div class="mt-4 flex flex-col gap-2 text-center">
-          <button id="toggle-mode-btn" class="text-sm text-cyan-400 hover:text-cyan-300 transition">Create an account</button>
-          <button class="text-sm text-gray-400 hover:text-white">Forgot Password?</button>
+    <div class="min-h-screen bg-[#F1F5F9] flex flex-col justify-center items-center p-4 text-xs font-sans">
+      <div class="max-w-sm w-full bg-white border border-gray-400 shadow-md overflow-hidden">
+        
+        <div class="bg-[#1F3864] text-white p-4 text-center border-b border-[#152747]">
+          <div class="inline-block bg-[#2F5597] text-white font-bold text-xs px-2.5 py-0.5 border border-white/30 tracking-widest mb-1">
+            LAKSHYA
+          </div>
+          <h1 class="text-sm font-bold uppercase tracking-wider text-white">Stage-Gate Innovation Portal</h1>
+          <p class="text-[11px] text-[#D9E1F2] mt-0.5">Enterprise User Sign-In</p>
         </div>
-        <button id="close-modal" class="absolute top-4 right-4 text-gray-400 hover:text-white text-xl">&times;</button>
+
+        <form id="signin-form" class="p-5 space-y-3 bg-white text-gray-800">
+          ${flashMsg ? `
+            <div id="signin-flash" class="bg-green-50 border border-green-300 text-green-800 p-2 text-xs">
+              ${flashMsg}
+            </div>
+          ` : ''}
+
+          <div id="signin-error" class="hidden text-red-600 text-xs p-2 bg-red-50 border border-red-200"></div>
+
+          <div>
+            <label class="block font-bold text-gray-700 mb-1" for="signin-email">Corporate Email Address</label>
+            <input type="email" id="signin-email" required placeholder="name@company.com" class="w-full bg-white border border-gray-400 px-2.5 py-1.5 text-xs focus:outline-none focus:border-[#1F3864]" />
+          </div>
+
+          <div>
+            <label class="block font-bold text-gray-700 mb-1" for="signin-pwd">Password</label>
+            <input type="password" id="signin-pwd" required placeholder="••••••••" class="w-full bg-white border border-gray-400 px-2.5 py-1.5 text-xs focus:outline-none focus:border-[#1F3864]" />
+          </div>
+
+          <div class="pt-1">
+            <button type="submit" id="btn-signin-submit" class="w-full py-2 bg-[#1F3864] hover:bg-[#152747] text-white font-bold text-xs uppercase tracking-wider border border-[#152747] transition">
+              Sign In
+            </button>
+          </div>
+
+          <div class="flex items-center justify-between pt-2 border-t border-gray-200 text-xs">
+            <a href="#signup" class="text-[#1F3864] font-semibold hover:underline">Don't have an account? Sign Up</a>
+            <a href="#forgot-password" class="text-gray-500 hover:text-gray-800 hover:underline">Forgot password?</a>
+          </div>
+        </form>
+
+      </div>
+      <div class="text-center mt-4 text-gray-500 text-[11px]">
+        Lakshya Innovation &amp; Operational Excellence System &bull; Confidential
       </div>
     </div>
   `;
 
-  document.querySelector('[data-audio-btn]').addEventListener('click', (e) => toggleAudio(e.target));
-  
-  let isLogin = true;
-  const modal = document.getElementById('login-modal');
-  const modalTitle = document.getElementById('modal-title');
-  const nameInput = document.getElementById('name');
-  const toggleBtn = document.getElementById('toggle-mode-btn');
-
-  document.querySelector('[data-login-btn]').addEventListener('click', () => modal.classList.remove('hidden'));
-  document.getElementById('close-modal').addEventListener('click', () => modal.classList.add('hidden'));
-
-  toggleBtn.addEventListener('click', () => {
-    isLogin = !isLogin;
-    if (isLogin) {
-      modalTitle.textContent = 'Sign In';
-      nameInput.classList.add('hidden');
-      nameInput.required = false;
-      toggleBtn.textContent = 'Create an account';
-    } else {
-      modalTitle.textContent = 'Create Account';
-      nameInput.classList.remove('hidden');
-      nameInput.required = true;
-      toggleBtn.textContent = 'Already have an account? Sign In';
-    }
-  });
-  
-  document.getElementById('login-form').addEventListener('submit', async (e) => {
+  document.getElementById('signin-form').addEventListener('submit', async (e) => {
     e.preventDefault();
-    const email = document.getElementById('email').value;
-    const password = document.getElementById('password').value;
-    const name = nameInput.value;
-    
+    const email = document.getElementById('signin-email').value.trim();
+    const password = document.getElementById('signin-pwd').value;
+    const errorEl = document.getElementById('signin-error');
+    const submitBtn = document.getElementById('btn-signin-submit');
+
+    errorEl.classList.add('hidden');
+    errorEl.textContent = '';
+    submitBtn.textContent = 'Authenticating...';
+    submitBtn.disabled = true;
+
     try {
-      if (isLogin) {
-        const { token, user } = await api.login(email, password);
-        localStorage.setItem('lakshya_token', token);
-        localStorage.setItem('lakshya_user', JSON.stringify(user));
-        renderDashboard();
-      } else {
-        await api.signup(email, password, name || email.split('@')[0]);
-        showToast('Account created successfully! You can now sign in.', 'success');
-        toggleBtn.click(); // Switch back to login view
-      }
+      await api.signIn(email, password);
+      await refreshActiveUser();
+      window.location.hash = '#dashboard';
     } catch (err) {
-      showToast(isLogin ? 'Incorrect email or password' : 'Signup failed: ' + err.message, 'error');
+      errorEl.textContent = err.message || 'Invalid email or password';
+      errorEl.classList.remove('hidden');
+      submitBtn.textContent = 'Sign In';
+      submitBtn.disabled = false;
     }
   });
-
-  initThreeScene();
 }
+
+// ==========================================
+// 2. SIGN UP PAGE (#signup)
+// ==========================================
+
+function renderSignUp() {
+  document.title = "Create Account — Lakshya Innovation Portal";
+  const app = document.getElementById('app');
+
+  app.innerHTML = `
+    <div class="min-h-screen bg-[#F1F5F9] flex flex-col justify-center items-center p-4 text-xs font-sans">
+      <div class="max-w-sm w-full bg-white border border-gray-400 shadow-md overflow-hidden">
+        
+        <div class="bg-[#1F3864] text-white p-4 text-center border-b border-[#152747]">
+          <div class="inline-block bg-[#2F5597] text-white font-bold text-xs px-2.5 py-0.5 border border-white/30 tracking-widest mb-1">
+            LAKSHYA
+          </div>
+          <h1 class="text-sm font-bold uppercase tracking-wider text-white">Create Account</h1>
+          <p class="text-[11px] text-[#D9E1F2] mt-0.5">Stage-Gate Innovation Portal Registration</p>
+        </div>
+
+        <form id="signup-form" class="p-5 space-y-3 bg-white text-gray-800">
+          <div id="signup-error" class="hidden text-red-600 text-xs p-2 bg-red-50 border border-red-200"></div>
+
+          <div>
+            <label class="block font-bold text-gray-700 mb-1" for="signup-name">Full Name</label>
+            <input type="text" id="signup-name" required placeholder="e.g. Rahul Sharma" class="w-full bg-white border border-gray-400 px-2.5 py-1.5 text-xs focus:outline-none focus:border-[#1F3864]" />
+          </div>
+
+          <div>
+            <label class="block font-bold text-gray-700 mb-1" for="signup-email">Corporate Email Address</label>
+            <input type="email" id="signup-email" required placeholder="name@company.com" class="w-full bg-white border border-gray-400 px-2.5 py-1.5 text-xs focus:outline-none focus:border-[#1F3864]" />
+          </div>
+
+          <div>
+            <label class="block font-bold text-gray-700 mb-1" for="signup-pwd">Create Password <span class="text-gray-400 font-normal text-[10px]">(Min. 8 characters)</span></label>
+            <input type="password" id="signup-pwd" required minlength="8" placeholder="••••••••" class="w-full bg-white border border-gray-400 px-2.5 py-1.5 text-xs focus:outline-none focus:border-[#1F3864]" />
+          </div>
+
+          <div>
+            <label class="block font-bold text-gray-700 mb-1" for="signup-confirm-pwd">Confirm Password</label>
+            <input type="password" id="signup-confirm-pwd" required minlength="8" placeholder="••••••••" class="w-full bg-white border border-gray-400 px-2.5 py-1.5 text-xs focus:outline-none focus:border-[#1F3864]" />
+          </div>
+
+          <div class="pt-1">
+            <button type="submit" id="btn-signup-submit" class="w-full py-2 bg-[#1F3864] hover:bg-[#152747] text-white font-bold text-xs uppercase tracking-wider border border-[#152747] transition">
+              Create Account
+            </button>
+          </div>
+
+          <div class="text-center pt-2 border-t border-gray-200 text-xs">
+            <a href="#signin" class="text-[#1F3864] font-semibold hover:underline">Already have an account? Sign In</a>
+          </div>
+        </form>
+
+      </div>
+    </div>
+  `;
+
+  document.getElementById('signup-form').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const name = document.getElementById('signup-name').value.trim();
+    const email = document.getElementById('signup-email').value.trim();
+    const password = document.getElementById('signup-pwd').value;
+    const confirmPwd = document.getElementById('signup-confirm-pwd').value;
+    const errorEl = document.getElementById('signup-error');
+    const submitBtn = document.getElementById('btn-signup-submit');
+
+    errorEl.classList.add('hidden');
+
+    if (password !== confirmPwd) {
+      errorEl.textContent = 'Passwords do not match.';
+      errorEl.classList.remove('hidden');
+      return;
+    }
+
+    if (password.length < 8) {
+      errorEl.textContent = 'Password must be at least 8 characters long.';
+      errorEl.classList.remove('hidden');
+      return;
+    }
+
+    submitBtn.textContent = 'Creating account...';
+    submitBtn.disabled = true;
+
+    try {
+      await api.signUp(email, password, name);
+      window.location.hash = '#signin';
+      renderSignIn('Account created successfully. Please sign in with your credentials.');
+    } catch (err) {
+      errorEl.textContent = err.message || 'Error creating account. Please try again.';
+      errorEl.classList.remove('hidden');
+      submitBtn.textContent = 'Create Account';
+      submitBtn.disabled = false;
+    }
+  });
+}
+
+// ==========================================
+// 3. FORGOT PASSWORD PAGE (#forgot-password)
+// ==========================================
+
+function renderForgotPassword() {
+  document.title = "Forgot Password — Lakshya Innovation Portal";
+  const app = document.getElementById('app');
+
+  app.innerHTML = `
+    <div class="min-h-screen bg-[#F1F5F9] flex flex-col justify-center items-center p-4 text-xs font-sans">
+      <div class="max-w-sm w-full bg-white border border-gray-400 shadow-md overflow-hidden">
+        
+        <div class="bg-[#1F3864] text-white p-4 text-center border-b border-[#152747]">
+          <div class="inline-block bg-[#2F5597] text-white font-bold text-xs px-2.5 py-0.5 border border-white/30 tracking-widest mb-1">
+            LAKSHYA
+          </div>
+          <h1 class="text-sm font-bold uppercase tracking-wider text-white">Reset Password</h1>
+          <p class="text-[11px] text-[#D9E1F2] mt-0.5">Password Recovery</p>
+        </div>
+
+        <form id="forgot-form" class="p-5 space-y-3 bg-white text-gray-800">
+          <div id="forgot-message" class="hidden p-2 text-xs"></div>
+
+          <div>
+            <label class="block font-bold text-gray-700 mb-1" for="forgot-email">Corporate Email Address</label>
+            <input type="email" id="forgot-email" required placeholder="name@company.com" class="w-full bg-white border border-gray-400 px-2.5 py-1.5 text-xs focus:outline-none focus:border-[#1F3864]" />
+          </div>
+
+          <div class="pt-1">
+            <button type="submit" id="btn-forgot-submit" class="w-full py-2 bg-[#1F3864] hover:bg-[#152747] text-white font-bold text-xs uppercase tracking-wider border border-[#152747] transition">
+              Send Reset Link
+            </button>
+          </div>
+
+          <div class="text-center pt-2 border-t border-gray-200 text-xs">
+            <a href="#signin" class="text-[#1F3864] font-semibold hover:underline">&lt; Back to Sign In</a>
+          </div>
+        </form>
+
+      </div>
+    </div>
+  `;
+
+  document.getElementById('forgot-form').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const email = document.getElementById('forgot-email').value.trim();
+    const msgEl = document.getElementById('forgot-message');
+    const submitBtn = document.getElementById('btn-forgot-submit');
+
+    msgEl.className = 'hidden';
+    submitBtn.textContent = 'Sending link...';
+    submitBtn.disabled = true;
+
+    try {
+      await api.resetPassword(email);
+      msgEl.textContent = 'Password reset link has been sent to your email address.';
+      msgEl.className = 'bg-green-50 border border-green-300 text-green-800 p-2 text-xs block';
+      submitBtn.textContent = 'Link Sent';
+    } catch (err) {
+      msgEl.textContent = err.message || 'Error sending password reset email.';
+      msgEl.className = 'bg-red-50 border border-red-300 text-red-800 p-2 text-xs block';
+      submitBtn.textContent = 'Send Reset Link';
+      submitBtn.disabled = false;
+    }
+  });
+}
+
+// ==========================================
+// 4. MAIN DASHBOARD PAGE (#dashboard)
+// ==========================================
 
 async function renderDashboard() {
-  document.title = "Dashboard — Lakshya Innovation Portal";
+  document.title = "Stage-Gate Pipeline Dashboard — Lakshya";
   window.location.hash = '#dashboard';
-  document.getElementById('canvas-container').innerHTML = ''; // Remove Three.js
   const app = document.getElementById('app');
   
-  const user = JSON.parse(localStorage.getItem('lakshya_user') || '{}');
-  const roleBadge = user.role === 'admin' ? '<span class="bg-primary text-white text-[10px] px-2 py-0.5 rounded-full uppercase ml-2">Admin</span>' : '<span class="bg-surface-variant text-secondary text-[10px] px-2 py-0.5 rounded-full uppercase ml-2">User</span>';
-  
-  document.body.className = "flex flex-col min-h-screen bg-background text-on-background m-0 p-0 font-sans";
-
   app.innerHTML = `
-    <header class="bg-surface-container-lowest border-b border-slate-border flex items-center justify-between px-4 h-16 w-full shrink-0 relative z-20">
-      <div class="flex items-center gap-4">
-        <div class="h-8 w-8 bg-blue-600 rounded-full flex items-center justify-center text-white font-bold">L</div>
-        <h1 class="font-headline-lg text-headline-lg font-bold text-primary">LAKSHYA INNOVATION PORTAL</h1>
+    ${getTopNavHtml('dashboard')}
+    <main class="p-4 max-w-[1440px] mx-auto text-gray-800">
+      <div class="p-8 text-center text-gray-500 font-sans text-xs">
+        Loading stage-gate initiatives from database...
       </div>
-      <div class="flex items-center gap-6">
-        <div class="flex items-center gap-2">
-          <a href="#profile" class="font-body-sm font-semibold text-primary hidden md:flex items-center hover:opacity-80 transition-opacity cursor-pointer">Welcome, ${user.name || (user.email ? user.email.split('@')[0] : 'User')}${roleBadge}</a>
-        </div>
-      </div>
-    </header>
-    <main class="flex-1 w-full max-w-container-max-width mx-auto px-margin-desktop py-stack-lg animate-pulse">
-      <div class="h-[72px] mb-stack-md bg-surface-container-low rounded w-1/3"></div>
-      <div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3 mb-stack-lg">
-        ${[1,2,3,4,5].map(() => `<div class="h-[100px] bg-surface-container-low rounded"></div>`).join('')}
-      </div>
-      <div class="h-[60px] bg-surface-container-low rounded mb-4 w-full"></div>
-      <div class="h-[300px] bg-surface-container-low rounded w-full"></div>
     </main>
   `;
+  bindNavEvents();
 
   let apiSummary = { stageCounts: [], analytics: { totalActive: 0, avgTimeInStage: 0, completedThisMonth: 0 } };
   let summary = [];
   let projects = [];
   try {
-    apiSummary = await api.getDashboardSummary();
-    if(Array.isArray(apiSummary)) { summary = apiSummary; } else { summary = apiSummary.stageCounts; }
-    projects = await api.getProjects();
+    [apiSummary, projects] = await Promise.all([
+      api.getDashboardSummary(),
+      api.getProjects()
+    ]);
+    summary = apiSummary.stageCounts || [];
   } catch (err) {
     console.error("Failed to load dashboard data", err);
   }
@@ -285,676 +435,1176 @@ async function renderDashboard() {
     return stat ? parseInt(stat.count, 10) : 0;
   };
   
-  const analytics = apiSummary.analytics || { totalActive: projects.length, avgTimeInStage: 0, completedThisMonth: 0 };
-  
+  const analytics = apiSummary.analytics || { totalActive: projects.length, avgTimeInStage: 14, completedThisMonth: getCount('D4') };
+
+  const stagesList = [
+    { id: 'D0', name: 'D0 Validation', desc: 'Potential & Strategy', color: '#2563EB' },
+    { id: 'D1', name: 'D1 Score Matrix', desc: 'Value Levers & Scoring', color: '#D97706' },
+    { id: 'D2', name: 'D2 Sign-Off', desc: 'Gate Approval', color: '#EA580C' },
+    { id: 'D3', name: 'D3 Implementation', desc: 'Execution & Milestones', color: '#4F46E5' },
+    { id: 'D4', name: 'D4 Completed', desc: 'Value Realized', color: '#16A34A' }
+  ];
+
   app.innerHTML = `
-    <!-- TopNav / Header -->
-    <header class="bg-surface-container-lowest border-b border-slate-border flex items-center justify-between px-4 h-16 w-full shrink-0 relative z-20">
-      <div class="flex items-center gap-4">
-        <div class="h-8 w-8 bg-blue-600 rounded-full flex items-center justify-center text-white font-bold">L</div>
-        <h1 class="font-headline-lg text-headline-lg font-bold text-primary">LAKSHYA INNOVATION PORTAL</h1>
-      </div>
-      <div class="flex items-center gap-6">
-        <div class="flex items-center gap-2">
-          <span class="font-body-sm font-semibold text-primary hidden md:block">Welcome, ${user.email || 'Reviewer'}${roleBadge}</span>
-        </div>
-        <button data-logout-btn class="text-xs border border-slate-border px-3 py-1 rounded text-primary hover:bg-surface-container-low transition">Log Out</button>
-      </div>
-    </header>
+    ${getTopNavHtml('dashboard')}
     
-    <!-- Main Content Area -->
-    <main class="flex-1 overflow-y-auto w-full max-w-container-max-width mx-auto px-margin-desktop py-stack-lg relative z-20 bg-background text-on-background">
-      <!-- Dynamic Subheader -->
-      <div class="px-4 mb-stack-md h-[72px] flex flex-col justify-center">
-        <h2 class="font-headline-xl text-headline-xl font-bold text-primary transition-all duration-300 ease-out" id="dynamic-title">STAGE-GATE PIPELINE DASHBOARD</h2>
-        <div class="mt-1">
-          <span class="font-data-tabular text-[13px] bg-surface-container border border-slate-border text-secondary px-2 py-1 rounded transition-opacity duration-300 ease-out" id="dynamic-subtitle">Overview of ongoing enterprise initiatives from ideation to realization.</span>
-        </div>
-      </div>
+    <main class="p-3 md:p-4 max-w-[1440px] mx-auto text-gray-900">
       
-      <!-- Summary Analytics -->
-      <div class="flex gap-6 mb-4 px-4">
-        <div class="flex flex-col"><span class="text-xs text-secondary uppercase tracking-wider">Total Active</span><span class="text-lg font-bold text-primary">${analytics.totalActive}</span></div>
-        <div class="flex flex-col"><span class="text-xs text-secondary uppercase tracking-wider">Avg Time in Stage</span><span class="text-lg font-bold text-primary">${analytics.avgTimeInStage} days</span></div>
-        <div class="flex flex-col"><span class="text-xs text-secondary uppercase tracking-wider">Completed this Month</span><span class="text-lg font-bold text-primary">${analytics.completedThisMonth}</span></div>
-      </div>
-      <!-- Summary Metric Cards -->
-      <div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3 mb-stack-lg">
-        ${[
-          { stage: 'D0', title: 'Potential', color: 'stage-d0-blue' },
-          { stage: 'D1', title: 'Idea/Levers', color: 'stage-d1-amber' },
-          { stage: 'D2', title: 'Signoff', color: 'stage-d2-orange' },
-          { stage: 'D3', title: 'Implementation', color: 'stage-d3-indigo' },
-          { stage: 'D4', title: 'Completed', color: 'stage-d4-emerald' }
-        ].map(s => `
-        <div class="stage-card bg-surface-container-lowest border border-slate-border border-t-4 border-t-${s.color} p-4 hover:bg-surface-container-low transition-colors duration-200 rounded cursor-pointer group flex flex-col h-full" data-stage="${s.stage.toLowerCase()}">
-          <div class="flex justify-between items-start mb-1">
-            <span class="font-label-caps text-label-caps text-secondary uppercase tracking-wider">${s.stage}: ${s.title}</span>
-            <span class="h-2 w-2 rounded-full bg-${s.color}"></span>
-          </div>
-          <div class="font-headline-xl text-headline-xl text-primary group-hover:text-${s.color} transition-colors">${getCount(s.stage)} Ideas</div>
+      <!-- Top Title & KPI Row -->
+      <div class="flex flex-wrap items-center justify-between gap-2 mb-3 pb-2 border-b border-gray-300">
+        <div>
+          <h2 class="text-base font-bold text-[#1F3864] uppercase tracking-tight">IDEA PIPELINE OVERVIEW</h2>
+          <p class="text-xs text-gray-500">Overview of ongoing enterprise initiatives from ideation to realization.</p>
         </div>
+        <div class="flex items-center gap-4 text-xs font-mono bg-[#F8FAFC] border border-gray-300 px-3 py-1.5">
+          <span>Total Active: <strong class="text-[#1F3864] font-bold">${analytics.totalActive}</strong></span>
+          <span class="text-gray-300">|</span>
+          <span>Avg Time in Stage: <strong class="text-gray-700">${analytics.avgTimeInStage} days</strong></span>
+          <span class="text-gray-300">|</span>
+          <span>Realized in D4: <strong class="text-[#16A34A] font-bold">${getCount('D4')}</strong></span>
+        </div>
+      </div>
+
+      <!-- 5 Stage Summary Boxes (Live Dynamic Counts) -->
+      <div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-2.5 mb-3">
+        ${stagesList.map(s => `
+          <div class="stage-filter-box bg-white border border-gray-300 p-2.5 cursor-pointer hover:bg-gray-50 transition" style="border-left: 4px solid ${s.color};" data-stage="${s.id}">
+            <div class="flex justify-between items-start">
+              <span class="text-[11px] font-bold text-gray-700 uppercase tracking-wide">${s.name}</span>
+              <span class="text-[10px] text-gray-400 font-mono">[${s.id}]</span>
+            </div>
+            <div class="mt-1 flex items-baseline justify-between">
+              <span class="text-xl font-bold text-[#1F3864] font-mono">${getCount(s.id)}</span>
+              <span class="text-[11px] text-gray-500">Ideas</span>
+            </div>
+            <div class="text-[10px] text-gray-400 mt-0.5 truncate">${s.desc}</div>
+          </div>
         `).join('')}
       </div>
-      
-      <!-- Filter & Controls -->
-      <div class="flex flex-col md:flex-row items-center bg-surface-container-lowest border border-slate-border p-3 rounded my-4 gap-4">
-        <div class="flex-1 relative">
-          <span class="font-label-caps text-label-caps text-secondary absolute -top-2 left-3 bg-white px-1 z-10">PROJECT SEARCH</span>
-          <div class="relative mt-1">
-            <span class="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-on-surface-variant text-[18px]">search</span>
-            <input id="dashboard-search" class="w-full pl-9 pr-4 py-1.5 bg-surface-container-low border border-slate-border rounded text-body-sm focus:outline-none focus:border-primary transition-colors" placeholder="Search title, ID, or suggester..." type="text">
+
+      <!-- Toolbar: Search, Filters & Actions -->
+      <div class="bg-[#F1F5F9] border border-gray-300 p-2 mb-2.5 flex flex-wrap items-center justify-between gap-2 text-xs">
+        <div class="flex flex-wrap items-center gap-2">
+          <div class="flex items-center gap-1.5">
+            <label class="font-semibold text-gray-700 whitespace-nowrap">Search:</label>
+            <input id="dashboard-search" type="text" placeholder="Title, ID, Suggester..." class="bg-white border border-gray-300 px-2 py-1 w-48 sm:w-60 text-xs focus:outline-none focus:border-[#1F3864]" />
+          </div>
+          
+          <div class="flex items-center gap-1.5">
+            <label class="font-semibold text-gray-700 whitespace-nowrap">Stage:</label>
+            <select id="dashboard-stage-filter" class="bg-white border border-gray-300 px-2 py-1 text-xs focus:outline-none focus:border-[#1F3864]">
+              <option value="ALL">All Stages</option>
+              <option value="D0">D0 Validation</option>
+              <option value="D1">D1 Score Matrix</option>
+              <option value="D2">D2 Sign-Off</option>
+              <option value="D3">D3 Implementation</option>
+              <option value="D4">D4 Completed</option>
+            </select>
+          </div>
+
+          <div class="flex items-center gap-1.5">
+            <label class="font-semibold text-gray-700 whitespace-nowrap">Workstream:</label>
+            <select id="dashboard-workstream-filter" class="bg-white border border-gray-300 px-2 py-1 text-xs focus:outline-none focus:border-[#1F3864]">
+              <option value="ALL">All Workstreams</option>
+              <option value="Operations">Operations</option>
+              <option value="Maintenance">Maintenance</option>
+              <option value="Production">Production</option>
+              <option value="Engineering">Engineering</option>
+              <option value="Procurement">Procurement</option>
+              <option value="Quality">Quality</option>
+            </select>
           </div>
         </div>
-        <div class="w-full md:w-64 relative">
-          <span class="font-label-caps text-label-caps text-secondary absolute -top-2 left-3 bg-white px-1 z-10">FILTER BY STAGE</span>
-          <select id="dashboard-filter" class="w-full mt-1 px-3 py-1.5 bg-surface-container-low border border-slate-border rounded text-body-sm focus:outline-none focus:border-primary transition-colors appearance-none pr-10">
-            <option>All Stages</option>
-            <option>D0 Potential</option>
-            <option>D1 Idea</option>
-          </select>
-        </div>
-        <div class="flex bg-surface-container-low border border-slate-border rounded p-1 ml-auto">
-          <button class="px-4 py-1 bg-white border border-slate-border rounded text-primary font-body-sm font-semibold shadow-sm flex items-center gap-2">
-            Table View
+
+        <div class="flex items-center gap-2">
+          <button id="btn-new-idea" class="px-3 py-1 bg-[#1F3864] hover:bg-[#152747] text-white font-semibold text-xs border border-[#152747] transition">
+            + New Idea
           </button>
-          <button data-nav-grid class="px-4 py-1 text-secondary hover:text-primary font-body-sm flex items-center gap-2 transition-colors">
-            Excel Grid View
+          <button onclick="window.location.hash='#grid'" class="px-3 py-1 bg-white hover:bg-gray-100 text-gray-800 font-semibold text-xs border border-gray-300 transition">
+            Spreadsheet View
           </button>
         </div>
       </div>
-      
-      <!-- Main Data Table -->
-      <div class="bg-surface-container-lowest border border-slate-border rounded overflow-x-auto">
-        <table class="w-full min-w-[1000px] text-left border-collapse table-fixed">
+
+      <!-- Plain Bordered Data Table (Spreadsheet Look) -->
+      <div class="border border-gray-300 bg-white overflow-x-auto">
+        <table class="excel-table w-full">
           <thead>
-            <tr class="bg-surface-container-low border-b border-slate-border">
-              <th class="py-2 px-4 font-label-caps text-label-caps text-secondary font-semibold uppercase tracking-wider">Project ID</th>
-              <th class="py-2 px-4 font-label-caps text-label-caps text-secondary font-semibold uppercase tracking-wider">Title / Idea Description</th>
-              <th class="py-2 px-4 font-label-caps text-label-caps text-secondary font-semibold uppercase tracking-wider text-center">Stage</th>
-              <th class="py-2 px-4 font-label-caps text-label-caps text-secondary font-semibold uppercase tracking-wider">Suggester</th>
-              <th class="py-2 px-4 font-label-caps text-label-caps text-secondary font-semibold uppercase tracking-wider">Last Updated</th>
-              <th class="py-2 px-4 font-label-caps text-label-caps text-secondary font-semibold uppercase tracking-wider text-right">Action</th>
+            <tr class="bg-[#1F3864] text-white">
+              <th class="py-1.5 px-2.5 font-bold text-xs text-white border-r border-[#2F5597] w-16 text-center">ID</th>
+              <th class="py-1.5 px-2.5 font-bold text-xs text-white border-r border-[#2F5597]">Title / Idea Description</th>
+              <th class="py-1.5 px-2.5 font-bold text-xs text-white border-r border-[#2F5597] w-24 text-center">Stage</th>
+              <th class="py-1.5 px-2.5 font-bold text-xs text-white border-r border-[#2F5597] w-36">Suggester / Owner</th>
+              <th class="py-1.5 px-2.5 font-bold text-xs text-white border-r border-[#2F5597] w-28">Workstream</th>
+              <th class="py-1.5 px-2.5 font-bold text-xs text-white border-r border-[#2F5597] w-32">EBITDA Category</th>
+              <th class="py-1.5 px-2.5 font-bold text-xs text-white border-r border-[#2F5597] w-28">Last Updated</th>
+              <th class="py-1.5 px-2.5 font-bold text-xs text-white text-center w-24">Actions</th>
             </tr>
           </thead>
-          <tbody id="dashboard-tbody" class="font-data-tabular text-data-tabular text-primary">
-            ${projects.length > 0 ? projects.map(proj => {
-              const stageUpper = proj.current_stage?.toUpperCase() || 'D0';
-              const stageColors = { 'D0': 'stage-d0-blue', 'D1': 'stage-d1-amber', 'D2': 'stage-d2-orange', 'D3': 'stage-d3-indigo', 'D4': 'stage-d4-emerald' };
-              const color = stageColors[stageUpper] || 'stage-d0-blue';
-              const date = new Date(proj.updated_at).toLocaleDateString();
-              return `
-              <tr data-project-id="${proj.id}" data-project-stage="${stageUpper.toLowerCase()}" class="project-row border-b border-slate-border hover:bg-surface-container-low cursor-pointer transition-colors duration-150 h-[46px]">
-                <td class="py-2 px-4">I${proj.id}</td>
-                <td class="py-2 px-4 font-body-sm text-secondary truncate">${proj.title}</td>
-                <td class="py-2 px-4 text-center">
-                  <span class="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-${color}/10 text-${color} font-bold text-[12px]">
-                    <span class="h-1.5 w-1.5 rounded-full bg-${color}"></span>${stageUpper}
-                  </span>
-                </td>
-                <td class="py-2 px-4">${proj.suggester_name || proj.suggester_email.split('@')[0]}</td>
-                <td class="py-2 px-4 text-secondary">${date}</td>
-                <td class="py-2 px-4 text-right">
-                  <button class="px-3 py-0.5 bg-white border border-slate-border rounded text-primary hover:bg-surface-container-low transition-colors text-body-sm font-semibold">View</button>
-                </td>
-              </tr>
-              `;
-            }).join('') : `<tr><td colspan="6" class="text-center py-16 text-secondary"><div class="flex flex-col items-center gap-2"><span class="material-symbols-outlined text-4xl opacity-20">search_off</span><p>No projects match your criteria.</p></div></td></tr>`}
+          <tbody id="dashboard-tbody" class="font-sans text-xs">
+            <!-- Populated via renderTableRows() -->
           </tbody>
         </table>
       </div>
+      
+      <div class="flex items-center justify-between text-xs text-gray-500 mt-2">
+        <span id="table-count-label">Showing all projects</span>
+        <span>Click on any row to open the stage-gate project details</span>
+      </div>
+
     </main>
   `;
 
-  document.querySelector('[data-logout-btn]').addEventListener('click', () => {
-      showModal('Log Out', 'Log out of Lakshya Innovation System?', 'Log Out', () => {
-    localStorage.removeItem('lakshya_token');
-    localStorage.removeItem('lakshya_user');
-    document.body.className = "bg-obsidian text-white font-sans m-0 p-0 overflow-x-hidden";
-    renderLandingPage();
-    });
-  });
-  
-  document.querySelector('[data-nav-grid]').addEventListener('click', () => {
-    renderSpreadsheetGrid();
-  });
+  bindNavEvents();
 
-  // Replaced by searchLogic
-
-  // Re-attach the dynamic title hover effect from Stitch design
-  const defaultTitle = "STAGE-GATE PIPELINE DASHBOARD";
-  const defaultSubtitle = "Overview of ongoing enterprise initiatives from ideation to realization.";
-  const defaultColor = "text-primary";
-  
-  const stageMeta = {
-    'd0': { title: "D0: IDEA CAPTURE & POTENTIAL", subtitle: "CRITERIA: Impact evaluation & strategic alignment check.", color: "text-stage-d0-blue" },
-    'd1': { title: "D1: VALUE LEVERS & SCORING", subtitle: "CRITERIA: Detailed benefit assessment & implementation effort.", color: "text-stage-d1-amber" },
-    'd2': { title: "D2: EXECUTIVE SIGN-OFF", subtitle: "CRITERIA: Final gate approval & resource allocation.", color: "text-stage-d2-orange" },
-    'd3': { title: "D3: PROJECT EXECUTION", subtitle: "CRITERIA: Milestone tracking & real-time delivery metrics.", color: "text-stage-d3-indigo" },
-    'd4': { title: "D4: BENEFIT REALIZATION", subtitle: "CRITERIA: Post-implementation review & final value sign-off.", color: "text-stage-d4-emerald" }
-  };
-
-  const titleEl = document.getElementById('dynamic-title');
-  const subtitleEl = document.getElementById('dynamic-subtitle');
-  const cards = document.querySelectorAll('.stage-card');
-  let timeout;
-
-  const updateHeader = (title, subtitle, colorClass) => {
-    titleEl.style.opacity = '0';
-    subtitleEl.style.opacity = '0';
-    clearTimeout(timeout);
-    timeout = setTimeout(() => {
-      titleEl.textContent = title;
-      subtitleEl.textContent = subtitle;
-      titleEl.className = `font-headline-xl text-headline-xl font-bold transition-all duration-300 ease-out ${colorClass}`;
-      titleEl.style.opacity = '1';
-      subtitleEl.style.opacity = '1';
-    }, 120);
-  };
-
-  cards.forEach(card => {
-    card.addEventListener('mouseenter', () => {
-      const stage = card.dataset.stage;
-      if (stageMeta[stage]) updateHeader(stageMeta[stage].title, stageMeta[stage].subtitle, stageMeta[stage].color);
-    });
-    card.addEventListener('mouseleave', () => {
-      updateHeader(defaultTitle, defaultSubtitle, defaultColor);
-    });
-  });
+  document.getElementById('btn-new-idea').addEventListener('click', () => showNewIdeaModal());
 
   const searchInput = document.getElementById('dashboard-search');
-  const stageFilter = document.getElementById('dashboard-filter');
+  const stageFilter = document.getElementById('dashboard-stage-filter');
+  const workstreamFilter = document.getElementById('dashboard-workstream-filter');
   const tbody = document.getElementById('dashboard-tbody');
-  
+  const countLabel = document.getElementById('table-count-label');
+
   function renderTableRows() {
-    const q = searchInput.value.toLowerCase();
+    const q = searchInput.value.toLowerCase().trim();
     const stage = stageFilter.value;
-    
+    const workstream = workstreamFilter.value;
+
     const filtered = projects.filter(p => {
-      const matchQ = p.title.toLowerCase().includes(q) || ('I'+p.id).toLowerCase().includes(q) || (p.suggester_name || '').toLowerCase().includes(q);
-      const matchS = stage === 'All Stages' || (p.current_stage || 'd0').toLowerCase() === stage.toLowerCase().split(' ')[0];
-      return matchQ && matchS;
+      const idStr = ('I' + (p.id || '')).toLowerCase();
+      const matchQ = !q || p.title.toLowerCase().includes(q) || idStr.includes(q) || (p.suggester_name || '').toLowerCase().includes(q) || (p.suggester_email || '').toLowerCase().includes(q);
+      const matchStage = stage === 'ALL' || (p.current_stage || 'D0').toUpperCase() === stage;
+      const matchWorkstream = workstream === 'ALL' || (p.workstream || 'Operations').toLowerCase() === workstream.toLowerCase();
+      return matchQ && matchStage && matchWorkstream;
     });
-    
+
+    countLabel.textContent = `Showing ${filtered.length} of ${projects.length} initiatives`;
+
     if (filtered.length === 0) {
-      if (projects.length === 0) {
-        tbody.innerHTML = `<tr><td colspan="6" class="text-center py-16 text-secondary"><div class="flex flex-col items-center gap-2"><span class="material-symbols-outlined text-4xl opacity-20">inbox</span><p>No projects yet. Get started by submitting a new idea!</p></div></td></tr>`;
-      } else {
-        tbody.innerHTML = `<tr><td colspan="6" class="text-center py-16 text-secondary"><div class="flex flex-col items-center gap-2"><span class="material-symbols-outlined text-4xl opacity-20">search_off</span><p>No projects match your search.</p><button id="clear-filters" class="mt-2 text-primary font-bold hover:underline">Clear Filters</button></div></td></tr>`;
-        setTimeout(() => {
-          const btn = document.getElementById('clear-filters');
-          if (btn) btn.onclick = () => { searchInput.value = ''; stageFilter.value = 'All Stages'; renderTableRows(); };
-        }, 0);
-      }
+      tbody.innerHTML = `
+        <tr>
+          <td colspan="8" class="text-center py-8 text-gray-500">
+            No projects found matching the criteria.
+          </td>
+        </tr>
+      `;
       return;
     }
-    
-    tbody.innerHTML = filtered.map(proj => {
-      const stageUpper = proj.current_stage?.toUpperCase() || 'D0';
-      const stageColors = { 'D0': 'stage-d0-blue', 'D1': 'stage-d1-amber', 'D2': 'stage-d2-orange', 'D3': 'stage-d3-indigo', 'D4': 'stage-d4-emerald' };
-      const color = stageColors[stageUpper] || 'stage-d0-blue';
-      const date = new Date(proj.updated_at).toLocaleDateString();
+
+    const stageColors = {
+      'D0': 'bg-blue-50 text-blue-800 border-blue-300',
+      'D1': 'bg-amber-50 text-amber-800 border-amber-300',
+      'D2': 'bg-orange-50 text-orange-800 border-orange-300',
+      'D3': 'bg-indigo-50 text-indigo-800 border-indigo-300',
+      'D4': 'bg-green-50 text-green-800 border-green-300'
+    };
+
+    tbody.innerHTML = filtered.map((proj, idx) => {
+      const stageUpper = (proj.current_stage || 'D0').toUpperCase();
+      const badgeStyle = stageColors[stageUpper] || 'bg-gray-100 text-gray-800 border-gray-300';
+      const updatedDate = proj.updated_at ? new Date(proj.updated_at).toLocaleDateString() : '-';
+      const rowBg = idx % 2 === 0 ? 'bg-white' : 'bg-[#F8FAFC]';
+      const shortId = typeof proj.id === 'string' && proj.id.length > 8 ? proj.id.slice(0, 8) : proj.id;
+
       return `
-      <tr data-project-id="${proj.id}" data-project-stage="${stageUpper.toLowerCase()}" class="project-row border-b border-slate-border hover:bg-surface-container-low cursor-pointer transition-colors duration-150 h-[46px]">
-        <td class="py-2 px-4">I${proj.id}</td>
-        <td class="py-2 px-4 font-body-sm text-secondary truncate">${proj.title}</td>
-        <td class="py-2 px-4 text-center">
-          <span class="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-${color}/10 text-${color} font-bold text-[12px]">
-            <span class="h-1.5 w-1.5 rounded-full bg-${color}"></span>${stageUpper}
-          </span>
-        </td>
-        <td class="py-2 px-4">${proj.suggester_name || proj.suggester_email?.split('@')[0]}</td>
-        <td class="py-2 px-4 text-secondary">${date}</td>
-        <td class="py-2 px-4 text-right">
-          <button class="px-3 py-0.5 bg-white border border-slate-border rounded text-primary hover:bg-surface-container-low transition-colors text-body-sm font-semibold">View</button>
-        </td>
-      </tr>
+        <tr data-project-id="${proj.id}" class="${rowBg} hover:bg-[#EFF6FF] cursor-pointer border-b border-gray-200">
+          <td class="py-1.5 px-2.5 text-center font-mono font-bold text-gray-700 border-r border-gray-200">I${shortId}</td>
+          <td class="py-1.5 px-2.5 font-semibold text-gray-900 border-r border-gray-200">
+            <div class="truncate max-w-[360px]" title="${proj.title}">${proj.title}</div>
+            ${proj.description ? `<div class="text-[11px] text-gray-500 font-normal truncate max-w-[360px]">${proj.description}</div>` : ''}
+          </td>
+          <td class="py-1.5 px-2.5 text-center border-r border-gray-200">
+            <span class="inline-block px-1.5 py-0.5 text-[11px] font-bold border ${badgeStyle}">${stageUpper}</span>
+          </td>
+          <td class="py-1.5 px-2.5 text-gray-800 border-r border-gray-200 truncate">${proj.suggester_name || proj.suggester_email?.split('@')[0]}</td>
+          <td class="py-1.5 px-2.5 text-gray-600 border-r border-gray-200">${proj.workstream || 'Operations'}</td>
+          <td class="py-1.5 px-2.5 text-gray-600 border-r border-gray-200">${proj.ebitda_category || 'Cost Reduction'}</td>
+          <td class="py-1.5 px-2.5 text-gray-500 font-mono border-r border-gray-200">${updatedDate}</td>
+          <td class="py-1.5 px-2.5 text-center">
+            <button class="px-2 py-0.5 text-xs font-semibold bg-[#1F3864] hover:bg-[#152747] text-white border border-[#152747]">
+              View
+            </button>
+          </td>
+        </tr>
       `;
     }).join('');
-    
-    document.querySelectorAll('.project-row').forEach(row => {
+
+    tbody.querySelectorAll('tr[data-project-id]').forEach(row => {
       row.addEventListener('click', () => {
-        renderProjectDetail(row.dataset.projectId, row.dataset.projectStage);
+        renderProjectDetail(row.dataset.projectId);
       });
     });
   }
 
-  if (searchInput && stageFilter) {
-    searchInput.addEventListener('input', renderTableRows);
-    stageFilter.addEventListener('change', renderTableRows);
-    renderTableRows(); // Initial render to apply logic
-  }
+  searchInput.addEventListener('input', renderTableRows);
+  stageFilter.addEventListener('change', renderTableRows);
+  workstreamFilter.addEventListener('change', renderTableRows);
 
+  document.querySelectorAll('.stage-filter-box').forEach(box => {
+    box.addEventListener('click', () => {
+      stageFilter.value = box.dataset.stage;
+      renderTableRows();
+    });
+  });
+
+  renderTableRows();
 }
 
-async function renderProjectDetail(id, stage = 'd0') {
-  document.title = `Project ${id} — Lakshya Innovation Portal`;
+// ==========================================
+// 5. PROJECT DETAIL & WORKFLOW PAGE (#project/:id)
+// ==========================================
+
+async function renderProjectDetail(id) {
+  document.title = `Project Details: ID ${id} — Lakshya`;
   window.location.hash = '#project/' + id;
   const app = document.getElementById('app');
   
-  app.innerHTML = `<div class="h-screen w-full flex flex-col p-8 animate-pulse"><div class="h-16 bg-surface-container-low mb-8 rounded w-full"></div><div class="h-64 bg-surface-container-low rounded w-full mb-8"></div><div class="h-64 bg-surface-container-low rounded w-full"></div></div>`;
-  
+  app.innerHTML = `
+    ${getTopNavHtml('dashboard')}
+    <main class="p-4 max-w-[1280px] mx-auto text-gray-800 text-xs">
+      <div class="p-8 text-center text-gray-500">Loading project details...</div>
+    </main>
+  `;
+  bindNavEvents();
+
   let proj = {};
   let history = [];
   try {
-    const [p, h] = await Promise.all([api.getProject(id), api.getProjectHistory(id).catch(()=>[])]);
+    const [p, h] = await Promise.all([api.getProject(id), api.getProjectHistory(id).catch(() => [])]);
     proj = p;
     history = h;
-    stage = proj.current_stage ? proj.current_stage.toLowerCase() : 'd0';
   } catch (err) {
-    console.error("Failed to load project details", err);
     showToast('Error loading project: ' + err.message, 'error');
     renderDashboard();
     return;
   }
-  
-  const user = JSON.parse(localStorage.getItem('lakshya_user') || '{}');
-  const isAdmin = user.role === 'admin';
-  const disableStr = !isAdmin ? 'disabled title="Only admins can submit for approval"' : '';
-  const disableClass = !isAdmin ? 'opacity-50 cursor-not-allowed' : '';
 
+  const currentStage = (proj.current_stage || 'D0').toUpperCase();
+  const stages = ['D0', 'D1', 'D2', 'D3', 'D4'];
+  const stageIndex = stages.indexOf(currentStage);
+  const currentStageIndex = stageIndex >= 0 ? stageIndex : 0;
 
-  // Logic to apply D0 pattern across all 5 stages
-  const stages = ['d0', 'd1', 'd2', 'd3', 'd4'];
-  const currentStageIndex = stages.indexOf(stage);
-  
-  const stageNames = [
-    { id: 'd0', label: 'D0 Validation' },
-    { id: 'd1', label: 'D1 Score Matrix' },
-    { id: 'd2', label: 'D2 Signoff' },
-    { id: 'd3', label: 'D3 Implementation' },
-    { id: 'd4', label: 'D4 Completed' }
-  ];
+  const stageLabels = {
+    'D0': 'D0 Validation',
+    'D1': 'D1 Score Matrix',
+    'D2': 'D2 Sign-Off',
+    'D3': 'D3 Implementation',
+    'D4': 'D4 Completed'
+  };
 
-// TODO: Distinct forms for D1-D4 stages need to be implemented. Currently reusing D0 form layout as placeholder.
+  const shortId = typeof proj.id === 'string' && proj.id.length > 8 ? proj.id.slice(0, 8) : proj.id;
+
   app.innerHTML = `
-<nav class="bg-surface-container-lowest border-b border-slate-border sticky top-0 z-50">
-<div class="max-w-container-max-width mx-auto px-margin-mobile md:px-margin-desktop h-16 flex items-center justify-between">
-<div class="flex items-center gap-gutter">
-<div class="h-8 w-8 bg-blue-600 rounded-full flex items-center justify-center text-white font-bold">L</div>
-<div class="flex flex-col ml-4">
-<div class="flex items-center text-secondary text-body-sm mb-unit">
-<a class="hover:text-primary transition-colors cursor-pointer" id="breadcrumb-dash">Dashboard</a>
-<span class="material-symbols-outlined mx-1 text-sm">chevron_right</span>
-<span class="text-primary font-semibold">Project ID ${id}</span>
-</div>
-<div class="flex items-center gap-stack-md">
-<h1 class="font-headline-lg text-headline-lg text-primary">PROJECT DETAILS: ID ${id}</h1>${isAdmin ? '<span class="bg-primary text-white text-[10px] px-2 py-0.5 rounded-full uppercase ml-2">Admin</span>' : '<span class="bg-surface-variant text-secondary text-[10px] px-2 py-0.5 rounded-full uppercase ml-2">User</span>'}
-<span class="inline-flex items-center px-2 py-1 rounded bg-stage-${stage === 'd0' ? 'd0-blue' : 'd1-amber'}/10 text-stage-${stage === 'd0' ? 'd0-blue' : 'd1-amber'} font-label-caps text-label-caps uppercase">STATUS: Stage ${stage} - Under Review</span>
-</div>
-</div>
-</div>
-</div>
-</nav>
-<main class="flex-grow max-w-container-max-width w-full mx-auto px-margin-mobile md:px-margin-desktop py-stack-lg flex flex-col gap-stack-lg">
-<div class="bg-surface-container-lowest border border-slate-border rounded p-stack-md overflow-x-auto"><div class="flex items-center justify-between min-w-max gap-2">
-  <div class="flex items-center gap-2 flex-1">
-    <div class="flex items-center gap-2 text-secondary">
-      <span class="material-symbols-outlined text-lg">check_circle</span>
-      <span class="font-label-caps text-label-caps">Idea Info</span>
-    </div>
-    <span class="material-symbols-outlined text-secondary opacity-30">chevron_right</span>
-  </div>
-  ${stageNames.map((s, index) => {
-    if (index === currentStageIndex) {
-      return `
-        <div class="flex items-center gap-2 flex-1">
-          <div class="flex items-center gap-2 bg-stage-d0-blue text-white px-4 py-2 rounded-full animate-pulse shadow-lg">
-            <span class="font-data-tabular text-data-tabular">${index + 2}</span>
-            <span class="font-label-caps text-label-caps font-bold">${s.label}</span>
-          </div>
-          <span class="material-symbols-outlined text-stage-d0-blue">chevron_right</span>
+    ${getTopNavHtml('dashboard')}
+    
+    <main class="p-3 md:p-4 max-w-[1280px] mx-auto text-gray-900 text-xs">
+      
+      <!-- Top Action / Breadcrumb Bar -->
+      <div class="flex items-center justify-between mb-2">
+        <div class="flex items-center gap-1.5 text-xs text-gray-600">
+          <button id="btn-back-breadcrumb" class="text-[#1F3864] font-semibold hover:underline cursor-pointer">Dashboard</button>
+          <span>&gt;&gt;</span>
+          <span class="font-bold text-gray-800">Project Details: ID [${shortId}]</span>
         </div>
-      `;
-    } else if (index < currentStageIndex) {
-      return `
-        <div class="flex items-center gap-2 flex-1">
-          <div class="flex items-center gap-2 text-secondary">
-            <span class="material-symbols-outlined text-lg">check_circle</span>
-            <span class="font-label-caps text-label-caps">${s.label}</span>
-          </div>
-          <span class="material-symbols-outlined text-secondary opacity-30">chevron_right</span>
-        </div>
-      `;
-    } else {
-      return `
-        <div class="flex items-center gap-2 flex-1 opacity-50">
-          <span class="font-data-tabular text-data-tabular text-secondary">${index + 2}</span>
-          <span class="font-label-caps text-label-caps text-secondary">${s.label}</span>
-          ${index < 4 ? '<span class="material-symbols-outlined text-secondary opacity-30">chevron_right</span>' : ''}
-        </div>
-      `;
-    }
-  }).join('')}
-</div></div>
-<div class="grid grid-cols-1 lg:grid-cols-3 gap-gutter items-start">
-<div class="lg:col-span-1 bg-surface-container-lowest border border-slate-border rounded p-gutter flex flex-col gap-stack-md h-full"><h2 class="font-headline-md text-headline-md text-primary mb-stack-sm pb-stack-sm border-b border-slate-border">Idea Details</h2><div class="flex flex-col gap-stack-sm mb-stack-md"><label class="font-label-caps text-label-caps text-secondary uppercase tracking-wider">Idea Description</label><p class="font-body-md text-body-md text-primary bg-surface-container-low p-stack-sm rounded border border-slate-border line-clamp-4">${proj.title}</p></div><div class="grid grid-cols-2 gap-x-gutter gap-y-stack-md"><div class="flex flex-col gap-unit"><label class="font-label-caps text-label-caps text-secondary uppercase tracking-wider">Suggester</label><span class="font-body-md text-primary font-semibold">${proj.suggester_name || proj.suggester_email?.split('@')[0]}</span></div><div class="flex flex-col gap-unit"><label class="font-label-caps text-label-caps text-secondary uppercase tracking-wider">Work Stream</label><span class="font-body-md text-primary font-semibold">${proj.workstream || 'Operations'}</span></div><div class="flex flex-col gap-unit"><label class="font-label-caps text-label-caps text-secondary uppercase tracking-wider">EBITDA Category</label><span class="font-body-md text-primary font-semibold">${proj.ebitda_category || 'Cost Reduction'}</span></div><div class="flex flex-col gap-unit"><label class="font-label-caps text-label-caps text-secondary uppercase tracking-wider">Stage</label><span class="font-body-md text-primary font-semibold">${proj.current_stage}</span></div></div></div>
-<div class="lg:col-span-2 bg-surface-container-lowest border border-slate-border rounded p-gutter flex flex-col gap-stack-lg">
-<h2 class="font-headline-md text-headline-md text-primary border-b border-slate-border pb-stack-sm uppercase">INPUT REQUIRED FOR ${stage.toUpperCase()} STAGE</h2>
-<form class="flex flex-col gap-stack-lg">
-<div class="flex flex-col gap-unit">
-<label class="font-label-caps text-label-caps text-secondary uppercase tracking-wider" for="d0-lever">Select ${stage.toUpperCase()} Lever <span class="text-error">*</span></label>
-<select class="w-full md:w-1/2 p-2 border border-slate-border rounded focus:border-primary focus:ring-1 focus:ring-primary outline-none font-body-md text-primary bg-surface-container-lowest transition-colors" id="d0-lever"><option disabled="" selected="" value="">Select a lever category</option>
-<option value="automation">Automation / Digitization</option>
-<option value="cost_saving">Process Optimization</option>
-</select>
-</div>
-<div class="grid grid-cols-1 md:grid-cols-2 gap-gutter items-start">
-<div class="flex flex-col gap-stack-sm">
-<label class="font-label-caps text-label-caps text-secondary uppercase tracking-wider">Estimated Impact</label>
-<div class="flex flex-col gap-2">
-<label class="flex items-center gap-2 cursor-pointer p-2 border border-slate-border rounded hover:bg-surface-container-low transition-colors"><input class="text-primary focus:ring-primary border-slate-border" name="impact" type="radio" value="low"><span class="font-body-md text-primary">Low</span></label>
-<label class="flex items-center gap-2 cursor-pointer p-2 border border-slate-border rounded hover:bg-surface-container-low transition-colors"><input class="text-primary focus:ring-primary border-slate-border" name="impact" type="radio" value="medium"><span class="font-body-md text-primary">Medium</span></label>
-<label class="flex items-center gap-2 cursor-pointer p-2 border border-slate-border rounded hover:bg-surface-container-low transition-colors bg-surface-container-low border-primary/30"><input checked="" class="text-primary focus:ring-primary border-slate-border" name="impact" type="radio" value="high"><span class="font-body-md text-primary font-medium">High</span></label>
-</div></div>
-<div class="flex flex-col gap-stack-sm">
-<label class="font-label-caps text-label-caps text-secondary uppercase tracking-wider">Implementability</label>
-<div class="flex flex-col gap-2">
-<label class="flex items-center gap-2 cursor-pointer p-2 border border-slate-border rounded hover:bg-surface-container-low transition-colors"><input class="text-primary focus:ring-primary border-slate-border" name="implementability" type="radio" value="high"><span class="font-body-md text-primary">High Effort</span></label>
-<label class="flex items-center gap-2 cursor-pointer p-2 border border-slate-border rounded hover:bg-surface-container-low transition-colors"><input class="text-primary focus:ring-primary border-slate-border" name="implementability" type="radio" value="mid"><span class="font-body-md text-primary">Mid Effort</span></label>
-<label class="flex items-center gap-2 cursor-pointer p-2 border border-slate-border rounded hover:bg-surface-container-low transition-colors"><input class="text-primary focus:ring-primary border-slate-border" name="implementability" type="radio" value="quick_win"><span class="font-body-md text-primary">Quick Win</span></label>
-</div></div></div>
-<div class="flex flex-col gap-unit">
-<label class="font-label-caps text-label-caps text-secondary uppercase tracking-wider" for="justification">Reviewer Justification & Comments</label>
-<textarea class="w-full p-3 border border-slate-border rounded focus:border-primary focus:ring-1 focus:ring-primary outline-none font-body-md text-primary bg-surface-container-lowest resize-y" id="justification" placeholder="Enter detailed justification for the ${stage.toUpperCase()} stage gate review..." rows="4"></textarea>
-</div>
-</form>
-</div>
-</div>
+        <button id="btn-back-top" class="px-2.5 py-1 text-xs bg-gray-100 hover:bg-gray-200 text-gray-700 border border-gray-300 font-semibold">
+          &lt; Return to Dashboard
+        </button>
+      </div>
 
-<!-- Stage History Timeline -->
-<div class="lg:col-span-3 bg-surface-container-lowest border border-slate-border rounded p-gutter mt-stack-md">
-  <h3 class="font-headline-sm font-bold text-primary mb-4 border-b border-slate-border pb-2">Stage History</h3>
-  <div class="flex flex-col gap-4">
-    ${history.length > 0 ? history.map(h => `
-      <div class="flex items-start gap-4 border-l-2 border-slate-border pl-4 relative">
-        <div class="absolute -left-[9px] top-1 h-4 w-4 rounded-full bg-surface-variant border-2 border-surface-container-lowest"></div>
+      <!-- Header Banner Box -->
+      <div class="bg-[#1F3864] text-white p-3 border border-[#152747] mb-3 flex flex-wrap items-center justify-between gap-2 shadow-sm">
         <div>
-          <p class="font-body-sm text-primary"><strong>${h.actor_name || h.actor_email?.split('@')[0]}</strong> advanced from <span class="uppercase font-semibold">${h.from_stage}</span> to <span class="uppercase font-semibold">${h.to_stage}</span></p>
-          ${h.comments ? `<p class="text-sm text-secondary italic mt-1">${h.comments}</p>` : ''}
-          <p class="text-xs text-secondary mt-1" title="${new Date(h.created_at).toLocaleString()}">${new Date(h.created_at).toLocaleDateString()}</p>
+          <span class="text-[10px] text-[#D9E1F2] uppercase font-mono tracking-wider">PROJECT IDENTIFIER: ID [${shortId}]</span>
+          <h1 class="text-sm md:text-base font-bold text-white uppercase">${proj.title}</h1>
+        </div>
+        <div class="text-right">
+          <div class="text-[10px] text-[#D9E1F2] uppercase">CURRENT STATUS</div>
+          <span class="inline-block bg-white text-[#1F3864] px-2 py-0.5 font-bold text-xs border border-white">
+            STAGE [${currentStage}]: ${stageLabels[currentStage] || 'Under Review'}
+          </span>
         </div>
       </div>
-    `).join('') : '<p class="text-sm text-secondary">No stage changes yet.</p>'}
-  </div>
-</div>
 
-</main>
-<footer class="bg-surface-container-lowest border-t border-slate-border mt-auto py-4 px-margin-mobile md:px-margin-desktop sticky bottom-0 z-40 backdrop-blur-md bg-surface-container-lowest/90">
-<div class="max-w-container-max-width mx-auto flex items-center justify-between">
-<button class="font-label-caps text-label-caps text-secondary hover:text-primary transition-colors flex items-center gap-1 cursor-pointer" id="back-btn">
-<span class="material-symbols-outlined text-sm">arrow_back</span> Back to Dashboard
-</button>
-<div class="flex items-center gap-[12px]">
-<button id="save-progress-btn" class="px-4 py-2 border border-slate-border rounded font-label-caps text-label-caps text-primary hover:bg-surface-container-low transition-colors cursor-pointer">
-Save Progress
-</button>
-<button id="submit-approval-btn" ${disableStr} class="px-4 py-2 text-on-primary ${disableClass} rounded font-label-caps text-label-caps flex items-center gap-2 hover:bg-primary/90 transition-colors bg-stage-d0-blue cursor-pointer">
-<span class="material-symbols-outlined text-sm">mail</span> Submit for Approval
-</button>
-</div>
-</div>
-</footer>
+      <!-- Step Navigation: Plain Bracketed Labels -->
+      <div class="bg-white border border-gray-300 p-2.5 mb-3 flex flex-wrap items-center justify-between gap-1 select-none">
+        <div class="flex items-center gap-1 text-xs">
+          <span class="font-bold text-gray-700">[Stage Workflow]:</span>
+        </div>
+        <div class="flex flex-wrap items-center gap-2 text-xs">
+          <span class="px-2 py-0.5 bg-gray-100 text-gray-700 border border-gray-300 font-semibold">[Idea Info]</span>
+          <span class="text-gray-400 font-bold">&gt;&gt;</span>
+          
+          ${stages.map((stg, idx) => {
+            if (idx === currentStageIndex) {
+              return `<span class="px-2.5 py-0.5 bg-[#1F3864] text-white font-bold border border-[#152747]">[${stg}: ${stageLabels[stg]}]</span>`;
+            } else if (idx < currentStageIndex) {
+              return `<span class="px-2.5 py-0.5 bg-green-50 text-green-800 border border-green-300 font-semibold">[✓ ${stg}]</span>`;
+            } else {
+              return `<span class="px-2.5 py-0.5 bg-gray-50 text-gray-400 border border-gray-200">[${stg}: ${stageLabels[stg]}]</span>`;
+            }
+          }).join('<span class="text-gray-400 font-bold">&gt;&gt;</span>')}
+        </div>
+      </div>
+
+      <!-- 2-Column Grid: Left (Idea Info Table), Right (Stage Gate Inputs) -->
+      <div class="grid grid-cols-1 lg:grid-cols-12 gap-3 mb-3">
+        
+        <!-- Left Column: Idea Details Table -->
+        <div class="lg:col-span-5 border border-gray-300 bg-white">
+          <div class="bg-[#F1F5F9] border-b border-gray-300 px-3 py-1.5 font-bold text-xs text-[#1F3864] uppercase">
+            Initiative Master Information
+          </div>
+          <table class="excel-table w-full">
+            <tbody>
+              <tr>
+                <td class="w-1/3 bg-[#F8FAFC] font-semibold text-gray-700 border-r border-b border-gray-200">Project ID</td>
+                <td class="font-mono text-gray-900 border-b border-gray-200">I${proj.id}</td>
+              </tr>
+              <tr>
+                <td class="bg-[#F8FAFC] font-semibold text-gray-700 border-r border-b border-gray-200">Title</td>
+                <td class="font-bold text-gray-900 border-b border-gray-200">${proj.title}</td>
+              </tr>
+              <tr>
+                <td class="bg-[#F8FAFC] font-semibold text-gray-700 border-r border-b border-gray-200">Description</td>
+                <td class="text-gray-800 border-b border-gray-200">${proj.description || proj.title}</td>
+              </tr>
+              <tr>
+                <td class="bg-[#F8FAFC] font-semibold text-gray-700 border-r border-b border-gray-200">Suggester</td>
+                <td class="text-gray-900 border-b border-gray-200">${proj.suggester_name || '-'}</td>
+              </tr>
+              <tr>
+                <td class="bg-[#F8FAFC] font-semibold text-gray-700 border-r border-b border-gray-200">Suggester Email</td>
+                <td class="font-mono text-gray-700 border-b border-gray-200">${proj.suggester_email || '-'}</td>
+              </tr>
+              <tr>
+                <td class="bg-[#F8FAFC] font-semibold text-gray-700 border-r border-b border-gray-200">Workstream</td>
+                <td class="text-gray-900 border-b border-gray-200">${proj.workstream || 'Operations'}</td>
+              </tr>
+              <tr>
+                <td class="bg-[#F8FAFC] font-semibold text-gray-700 border-r border-b border-gray-200">EBITDA Category</td>
+                <td class="text-gray-900 border-b border-gray-200">${proj.ebitda_category || 'Cost Reduction'}</td>
+              </tr>
+              <tr>
+                <td class="bg-[#F8FAFC] font-semibold text-gray-700 border-r border-b border-gray-200">Created Date</td>
+                <td class="font-mono text-gray-600 border-b border-gray-200">${proj.created_at ? new Date(proj.created_at).toLocaleString() : '-'}</td>
+              </tr>
+              <tr>
+                <td class="bg-[#F8FAFC] font-semibold text-gray-700 border-r border-b border-gray-200">Last Modified</td>
+                <td class="font-mono text-gray-600 border-b border-gray-200">${proj.updated_at ? new Date(proj.updated_at).toLocaleString() : '-'}</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <!-- Right Column: Stage Gate Form Inputs -->
+        <div class="lg:col-span-7 border border-gray-300 bg-white p-3.5 flex flex-col justify-between">
+          <div>
+            <div class="font-bold text-xs uppercase text-[#1F3864] border-b-2 border-[#1F3864] pb-1 mb-3">
+              INPUT REQUIRED FOR ${currentStage} STAGE GATE REVIEW
+            </div>
+
+            <form id="stage-form" class="space-y-3">
+              <!-- Lever Dropdown -->
+              <div>
+                <label class="block font-semibold text-gray-700 mb-1" for="stage-lever">
+                  Select ${currentStage} Lever Category: <span class="text-red-600">*</span>
+                </label>
+                <select id="stage-lever" class="w-full bg-white border border-gray-400 px-2.5 py-1.5 text-xs focus:outline-none focus:border-[#1F3864]">
+                  <option value="">-- Select a value lever --</option>
+                  <option value="automation" ${proj.lever === 'automation' ? 'selected' : ''}>Automation &amp; Digitization</option>
+                  <option value="cost_saving" ${proj.lever === 'cost_saving' ? 'selected' : ''}>Process Optimization &amp; Yield Improvement</option>
+                  <option value="scrap_reduction" ${proj.lever === 'scrap_reduction' ? 'selected' : ''}>Scrap &amp; Defect Reduction</option>
+                  <option value="energy_saving" ${proj.lever === 'energy_saving' ? 'selected' : ''}>Energy &amp; Utility Conservation</option>
+                  <option value="cycle_time" ${proj.lever === 'cycle_time' ? 'selected' : ''}>Cycle Time / Takt Time Reduction</option>
+                </select>
+              </div>
+
+              <!-- Estimated Impact & Implementability (Plain Radio Buttons) -->
+              <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
+                <div class="border border-gray-300 p-2.5 bg-[#F8FAFC]">
+                  <label class="block font-bold text-gray-800 mb-1.5">Estimated Impact / Value:</label>
+                  <div class="space-y-1">
+                    <label class="flex items-center gap-2 cursor-pointer">
+                      <input type="radio" name="impact" value="low" ${proj.impact === 'low' ? 'checked' : ''} class="text-[#1F3864]" />
+                      <span>Low Value (&lt; Rs. 5 Lakhs)</span>
+                    </label>
+                    <label class="flex items-center gap-2 cursor-pointer">
+                      <input type="radio" name="impact" value="medium" ${proj.impact === 'medium' ? 'checked' : ''} class="text-[#1F3864]" />
+                      <span>Medium Value (Rs. 5 - 25 Lakhs)</span>
+                    </label>
+                    <label class="flex items-center gap-2 cursor-pointer">
+                      <input type="radio" name="impact" value="high" ${(!proj.impact || proj.impact === 'high') ? 'checked' : ''} class="text-[#1F3864]" />
+                      <span>High Value (&gt; Rs. 25 Lakhs)</span>
+                    </label>
+                  </div>
+                  <div id="impact-error" class="text-red-600 text-[11px] mt-1 hidden">Impact selection is required</div>
+                </div>
+
+                <div class="border border-gray-300 p-2.5 bg-[#F8FAFC]">
+                  <label class="block font-bold text-gray-800 mb-1.5">Implementability &amp; Effort:</label>
+                  <div class="space-y-1">
+                    <label class="flex items-center gap-2 cursor-pointer">
+                      <input type="radio" name="implementability" value="high" ${proj.implementability === 'high' ? 'checked' : ''} class="text-[#1F3864]" />
+                      <span>High Effort (Cross-functional / Capex)</span>
+                    </label>
+                    <label class="flex items-center gap-2 cursor-pointer">
+                      <input type="radio" name="implementability" value="mid" ${(!proj.implementability || proj.implementability === 'mid') ? 'checked' : ''} class="text-[#1F3864]" />
+                      <span>Mid Effort (Standard rollout)</span>
+                    </label>
+                    <label class="flex items-center gap-2 cursor-pointer">
+                      <input type="radio" name="implementability" value="quick_win" ${proj.implementability === 'quick_win' ? 'checked' : ''} class="text-[#1F3864]" />
+                      <span>Quick Win (&lt; 30 Days)</span>
+                    </label>
+                  </div>
+                  <div id="impl-error" class="text-red-600 text-[11px] mt-1 hidden">Implementability selection is required</div>
+                </div>
+              </div>
+
+              <!-- Comments / Justification -->
+              <div>
+                <label class="block font-semibold text-gray-700 mb-1" for="justification">
+                  Reviewer Justification &amp; Gate Sign-Off Comments: <span class="text-red-600">*</span>
+                </label>
+                <textarea id="justification" rows="3" placeholder="Enter detailed technical justification for the ${currentStage} stage gate sign-off..." class="w-full bg-white border border-gray-400 p-2 text-xs font-mono focus:outline-none focus:border-[#1F3864]"></textarea>
+                <div id="comments-error" class="text-red-600 text-[11px] mt-0.5 hidden">Comments must be at least 10 characters</div>
+              </div>
+            </form>
+          </div>
+
+          <!-- Bottom Action Buttons inside form -->
+          <div class="mt-4 pt-3 border-t border-gray-300 flex items-center justify-between">
+            <button id="save-progress-btn" type="button" class="px-3.5 py-1.5 bg-gray-100 hover:bg-gray-200 text-gray-800 border border-gray-300 font-semibold text-xs transition">
+              Save Progress (Draft)
+            </button>
+            <button id="submit-approval-btn" type="button" class="px-4 py-1.5 bg-[#1F3864] hover:bg-[#152747] text-white border border-[#152747] font-semibold text-xs shadow-none transition">
+              Submit for Approval &amp; Advance Stage &gt;&gt;
+            </button>
+          </div>
+        </div>
+
+      </div>
+
+      <!-- Stage Audit History Table -->
+      <div class="border border-gray-300 bg-white mb-3">
+        <div class="bg-[#F1F5F9] border-b border-gray-300 px-3 py-1.5 font-bold text-xs text-[#1F3864] uppercase flex items-center justify-between">
+          <span>Stage History &amp; Audit Trail</span>
+          <span class="text-[10px] text-gray-500 font-normal">Chronological stage transitions</span>
+        </div>
+        <table class="excel-table w-full">
+          <thead>
+            <tr class="bg-gray-100 text-gray-700">
+              <th class="w-40 border-r border-b border-gray-300">Timestamp</th>
+              <th class="w-48 border-r border-b border-gray-300">Actor / Reviewer</th>
+              <th class="w-24 border-r border-b border-gray-300 text-center">From Stage</th>
+              <th class="w-24 border-r border-b border-gray-300 text-center">To Stage</th>
+              <th class="border-b border-gray-300">Comments / Justification</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${history.length > 0 ? history.map((h, i) => `
+              <tr class="${i % 2 === 0 ? 'bg-white' : 'bg-[#F8FAFC]'} border-b border-gray-200">
+                <td class="font-mono text-gray-600 border-r border-gray-200">${new Date(h.created_at).toLocaleString()}</td>
+                <td class="font-semibold text-gray-900 border-r border-gray-200">${h.actor_name || (h.actor_email ? h.actor_email.split('@')[0] : 'Reviewer')}</td>
+                <td class="text-center font-bold font-mono text-gray-700 border-r border-gray-200">[${(h.from_stage || 'D0').toUpperCase()}]</td>
+                <td class="text-center font-bold font-mono text-[#1F3864] border-r border-gray-200">[${(h.to_stage || 'D1').toUpperCase()}]</td>
+                <td class="text-gray-800 font-mono">${h.comments || '-'}</td>
+              </tr>
+            `).join('') : `
+              <tr>
+                <td colspan="5" class="text-center py-4 text-gray-500 font-sans">
+                  No historical stage transitions recorded for this project yet.
+                </td>
+              </tr>
+            `}
+          </tbody>
+        </table>
+      </div>
+
+      <!-- Bottom Navigation Toolbar -->
+      <div class="flex items-center justify-between border-t border-gray-300 pt-3">
+        <button id="btn-back-bottom" class="px-3 py-1.5 bg-gray-100 hover:bg-gray-200 text-gray-800 border border-gray-300 font-semibold text-xs">
+          &lt;&lt; Back to Pipeline Dashboard
+        </button>
+        <div class="flex items-center gap-2">
+          <button onclick="window.location.hash='#grid'" class="px-3 py-1.5 bg-white hover:bg-gray-100 text-gray-800 border border-gray-300 font-semibold text-xs">
+            Open D4 Financial Matrix &gt;
+          </button>
+        </div>
+      </div>
+
+    </main>
   `;
 
-  document.getElementById('back-btn').addEventListener('click', () => {
-    renderDashboard();
-  });
-  document.getElementById('breadcrumb-dash').addEventListener('click', () => {
-    renderDashboard();
-  });
+  bindNavEvents();
 
-  
+  document.getElementById('btn-back-breadcrumb').addEventListener('click', () => renderDashboard());
+  document.getElementById('btn-back-top').addEventListener('click', () => renderDashboard());
+  document.getElementById('btn-back-bottom').addEventListener('click', () => renderDashboard());
+
+  const saveBtn = document.getElementById('save-progress-btn');
   const submitBtn = document.getElementById('submit-approval-btn');
-  const impactRadios = document.querySelectorAll('input[name="impact"]');
-  const implRadios = document.querySelectorAll('input[name="implementability"]');
   const commentsInput = document.getElementById('justification');
 
-  // Add error placeholders
-  const impactContainer = impactRadios[0].closest('.flex-col').parentElement;
-  if (!document.getElementById('impact-error')) {
-    const err1 = document.createElement('div');
-    err1.id = 'impact-error';
-    err1.className = 'text-error font-body-sm mt-1 hidden';
-    err1.textContent = 'Impact is required';
-    impactRadios[0].closest('.flex-col').appendChild(err1);
-  }
-  if (!document.getElementById('impl-error')) {
-    const err2 = document.createElement('div');
-    err2.id = 'impl-error';
-    err2.className = 'text-error font-body-sm mt-1 hidden';
-    err2.textContent = 'Implementability is required';
-    implRadios[0].closest('.flex-col').appendChild(err2);
-  }
-  if (!document.getElementById('comments-error')) {
-    const err3 = document.createElement('div');
-    err3.id = 'comments-error';
-    err3.className = 'text-error font-body-sm mt-1 hidden';
-    err3.textContent = 'Comments must be at least 10 characters';
-    commentsInput.parentElement.appendChild(err3);
-  }
+  // Save Progress / Draft
+  saveBtn.addEventListener('click', async () => {
+    saveBtn.textContent = 'Saving...';
+    saveBtn.disabled = true;
+    try {
+      const lever = document.getElementById('stage-lever').value;
+      const impact = document.querySelector('input[name="impact"]:checked')?.value;
+      const implementability = document.querySelector('input[name="implementability"]:checked')?.value;
 
-  function validateForm() {
-    let isValid = true;
+      await api.saveDraft(id, { lever, impact, implementability });
+      showToast('Project progress saved successfully as draft.', 'success');
+    } catch (e) {
+      showToast('Error saving draft: ' + e.message, 'error');
+    } finally {
+      saveBtn.textContent = 'Save Progress (Draft)';
+      saveBtn.disabled = false;
+    }
+  });
+
+  // Submit for Approval & Advance Stage
+  submitBtn.addEventListener('click', async () => {
     const impactChecked = document.querySelector('input[name="impact"]:checked');
     const implChecked = document.querySelector('input[name="implementability"]:checked');
     const comments = commentsInput.value.trim();
 
-    if (!impactChecked) isValid = false;
-    if (!implChecked) isValid = false;
-    if (comments.length < 10) isValid = false;
-
-    if (isValid) {
-      submitBtn.disabled = false;
-      submitBtn.classList.remove('opacity-50', 'cursor-not-allowed');
+    let hasError = false;
+    if (!impactChecked) {
+      document.getElementById('impact-error').classList.remove('hidden');
+      hasError = true;
     } else {
-      submitBtn.disabled = true;
-      submitBtn.classList.add('opacity-50', 'cursor-not-allowed');
+      document.getElementById('impact-error').classList.add('hidden');
     }
-    return isValid;
+
+    if (!implChecked) {
+      document.getElementById('impl-error').classList.remove('hidden');
+      hasError = true;
+    } else {
+      document.getElementById('impl-error').classList.add('hidden');
+    }
+
+    if (comments.length < 10) {
+      document.getElementById('comments-error').classList.remove('hidden');
+      commentsInput.focus();
+      hasError = true;
+    } else {
+      document.getElementById('comments-error').classList.add('hidden');
+    }
+
+    if (hasError) return;
+
+    const nextStageIndex = currentStageIndex + 1;
+    const to_stage = nextStageIndex < stages.length ? stages[nextStageIndex] : currentStage;
+    const suggesterName = proj.suggester_name || (proj.suggester_email ? proj.suggester_email.split('@')[0] : 'Owner');
+
+    showModal(
+      'Confirm Stage Gate Advancement',
+      `Advance initiative "${proj.title}" from Stage [${currentStage}] to [${to_stage}]? An automated confirmation will be recorded.`,
+      'Confirm & Advance',
+      async () => {
+        submitBtn.textContent = 'Submitting...';
+        submitBtn.disabled = true;
+        try {
+          await api.submitApproval(id, { to_stage, comments });
+          showToast(`Initiative advanced to [${to_stage}].`, 'success');
+          renderProjectDetail(id);
+        } catch (err) {
+          showToast('Error advancing stage: ' + err.message, 'error');
+          submitBtn.textContent = 'Submit for Approval & Advance Stage >>';
+          submitBtn.disabled = false;
+        }
+      }
+    );
+  });
+}
+
+// ==========================================
+// 6. D4 SIGN-OFF SPREADSHEET GRID (#grid)
+// ==========================================
+
+function renderSpreadsheetGrid() {
+  document.title = "D4 Financial Sign-Off Matrix — Lakshya";
+  window.location.hash = '#grid';
+  const app = document.getElementById('app');
+
+  const months = ['Oct', 'Nov', 'Dec', 'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep'];
+
+  const defaultRows = [
+    { key: 'copq_charges', label: '1. COPQ Charges (Scrap / Rejection Incurred)', type: 'currency', color: 'bg-[#FEF9C3]', defaultVal: 12.5 },
+    { key: 'copq_saved', label: '2. COPQ Saved (Quality Improvement Benefit)', type: 'currency', color: 'bg-[#FEF08A] font-semibold', defaultVal: 18.0 },
+    { key: 'parts_inspected', label: '3. No. of Parts Inspected / Handled (Qty)', type: 'number', color: 'bg-[#FFEDD5]', defaultVal: 2500 },
+    { key: 'manhours_saved', label: '4. Man-hours Saved per Part (min/pc)', type: 'number', color: 'bg-[#FED7AA]', defaultVal: 4.5 },
+    { key: 'manpower_cost_saved', label: '5. Manpower Cost Saved (Rs. Lakhs)', type: 'currency', color: 'bg-[#FDBA74] font-semibold', defaultVal: 14.2 },
+    { key: 'investment_cost', label: '6. Investment / Tooling Cost Incurred (Capex)', type: 'currency', color: 'bg-[#FEE2E2]', defaultVal: 8.0 },
+  ];
+
+  app.innerHTML = `
+    ${getTopNavHtml('grid')}
+    
+    <main class="p-3 md:p-4 max-w-[1440px] mx-auto text-gray-900 text-xs">
+      
+      <!-- Top Title & KPI Summary Bar -->
+      <div class="flex flex-wrap items-center justify-between gap-2 mb-3 pb-2 border-b border-gray-300">
+        <div>
+          <h1 class="text-base font-bold text-[#1F3864] uppercase tracking-tight">D4 FINANCIAL SIGN-OFF &amp; SAVINGS MATRIX</h1>
+          <p class="text-xs text-gray-500">Spreadsheet calculation grid: Monthly savings breakdown (Oct – Sep) &amp; EBITDA impact.</p>
+        </div>
+        <div class="flex items-center gap-2">
+          <button id="btn-save-grid" class="px-3.5 py-1.5 bg-[#1F3864] hover:bg-[#152747] text-white font-semibold text-xs border border-[#152747] transition">
+            Save Financial Matrix
+          </button>
+          <button onclick="window.location.hash='#dashboard'" class="px-3 py-1.5 bg-gray-100 hover:bg-gray-200 text-gray-800 border border-gray-300 font-semibold text-xs">
+            Return to Dashboard
+          </button>
+        </div>
+      </div>
+
+      <!-- KPI Metric Boxes -->
+      <div class="grid grid-cols-2 sm:grid-cols-4 gap-2 mb-3">
+        <div class="border border-gray-300 bg-white p-2 text-center">
+          <div class="text-[10px] uppercase text-gray-500 font-semibold">Total Direct Savings (YTD)</div>
+          <div id="kpi-total-savings" class="text-base font-bold text-[#1F3864] font-mono">Rs. 386.40 L</div>
+        </div>
+        <div class="border border-gray-300 bg-white p-2 text-center">
+          <div class="text-[10px] uppercase text-gray-500 font-semibold">Total Manpower Saved (YTD)</div>
+          <div id="kpi-total-manpower" class="text-base font-bold text-[#1F3864] font-mono">Rs. 170.40 L</div>
+        </div>
+        <div class="border border-gray-300 bg-white p-2 text-center">
+          <div class="text-[10px] uppercase text-gray-500 font-semibold">Total Investment (Capex)</div>
+          <div id="kpi-total-investment" class="text-base font-bold text-gray-700 font-mono">Rs. 96.00 L</div>
+        </div>
+        <div class="border border-gray-300 bg-white p-2 text-center">
+          <div class="text-[10px] uppercase text-gray-500 font-semibold">Overall Net ROI Multiple</div>
+          <div id="kpi-total-roi" class="text-base font-bold text-[#16A34A] font-mono">4.03x</div>
+        </div>
+      </div>
+
+      <!-- Excel Spreadsheet Table -->
+      <div class="border border-black bg-white overflow-x-auto mb-3 shadow-sm">
+        <table class="excel-table w-full text-xs" style="border-collapse: collapse;">
+          <thead>
+            <tr class="bg-[#1F3864] text-white">
+              <th class="py-2 px-2.5 font-bold text-white border border-black min-w-[280px]">Cost Category / Savings Lever (Rs. Lakhs)</th>
+              ${months.map(m => `<th class="py-2 px-1.5 font-bold text-white border border-black text-right w-16">${m}</th>`).join('')}
+              <th class="py-2 px-2 font-bold text-white bg-[#152747] border border-black text-right min-w-[80px]">TOTAL (YTD)</th>
+            </tr>
+          </thead>
+          <tbody id="grid-matrix-body">
+            ${defaultRows.map(row => `
+              <tr class="${row.color} border border-black">
+                <td class="py-1 px-2.5 font-medium border border-black">${row.label}</td>
+                ${months.map((m, colIdx) => `
+                  <td class="p-0 border border-black">
+                    <input type="number" step="0.1" class="excel-cell-input grid-input" data-row="${row.key}" data-col="${colIdx}" value="${row.defaultVal}" />
+                  </td>
+                `).join('')}
+                <td class="py-1 px-2 font-bold text-right font-mono border border-black row-total" data-row-total="${row.key}">0.00</td>
+              </tr>
+            `).join('')}
+            
+            <!-- Subtotal: Operational Savings (Light Blue) -->
+            <tr class="bg-[#DBEAFE] font-bold border border-black text-gray-900">
+              <td class="py-1.5 px-2.5 border border-black">SUBTOTAL: Direct Operational Savings (COPQ + Manpower)</td>
+              ${months.map((m, colIdx) => `
+                <td class="py-1.5 px-1.5 text-right font-mono border border-black col-subtotal" data-subtotal-col="${colIdx}">0.00</td>
+              `).join('')}
+              <td id="grand-subtotal" class="py-1.5 px-2 font-bold text-right font-mono border border-black bg-[#BFDBFE]">0.00</td>
+            </tr>
+
+            <!-- Grand Total: EBITDA / Value Sign-Off (Navy Row) -->
+            <tr class="bg-[#1F3864] text-white font-bold border border-black">
+              <td class="py-2 px-2.5 border border-black text-white uppercase tracking-wider">TOTAL COST SAVING — EBITDA / VALUE SIGN-OFF</td>
+              ${months.map((m, colIdx) => `
+                <td class="py-2 px-1.5 text-right font-mono border border-black text-white col-net-ebitda" data-net-col="${colIdx}">0.00</td>
+              `).join('')}
+              <td id="grand-ebitda-total" class="py-2 px-2 font-bold text-right font-mono border border-black bg-[#152747] text-[#00F0FF] text-sm">0.00</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <!-- Legend -->
+      <div class="bg-[#F8FAFC] border border-gray-300 p-2 text-[11px] text-gray-600 flex flex-wrap items-center justify-between gap-2">
+        <div class="flex items-center gap-3">
+          <span class="font-bold text-gray-700">Cell Color Legend:</span>
+          <span class="inline-flex items-center gap-1"><span class="w-3 h-3 bg-[#FEF9C3] border border-gray-400"></span> Yellow = COPQ Savings</span>
+          <span class="inline-flex items-center gap-1"><span class="w-3 h-3 bg-[#FFEDD5] border border-gray-400"></span> Orange = Manpower Efforts</span>
+          <span class="inline-flex items-center gap-1"><span class="w-3 h-3 bg-[#FEE2E2] border border-gray-400"></span> Red/Pink = Capex</span>
+          <span class="inline-flex items-center gap-1"><span class="w-3 h-3 bg-[#DBEAFE] border border-gray-400"></span> Light Blue = Subtotal</span>
+        </div>
+        <div>
+          <span>All monetary inputs in Rs. Lakhs (INR). Changes compute dynamically.</span>
+        </div>
+      </div>
+
+    </main>
+  `;
+
+  bindNavEvents();
+
+  function recalculateGrid() {
+    const inputs = document.querySelectorAll('.grid-input');
+    const matrix = {};
+
+    inputs.forEach(input => {
+      const r = input.dataset.row;
+      const c = parseInt(input.dataset.col, 10);
+      if (!matrix[r]) matrix[r] = [];
+      matrix[r][c] = parseFloat(input.value) || 0;
+    });
+
+    let copqSavedSum = 0;
+    let mpSavedSum = 0;
+    let invSum = 0;
+
+    defaultRows.forEach(row => {
+      const vals = matrix[row.key] || [];
+      const sum = vals.reduce((a, b) => a + b, 0);
+      const totalEl = document.querySelector(`[data-row-total="${row.key}"]`);
+      if (totalEl) totalEl.textContent = sum.toFixed(2);
+
+      if (row.key === 'copq_saved') copqSavedSum = sum;
+      if (row.key === 'manpower_cost_saved') mpSavedSum = sum;
+      if (row.key === 'investment_cost') invSum = sum;
+    });
+
+    let totalDirectSavings = 0;
+    let totalNetEbitda = 0;
+
+    for (let c = 0; c < months.length; c++) {
+      const copq = (matrix['copq_saved'] && matrix['copq_saved'][c]) || 0;
+      const mp = (matrix['manpower_cost_saved'] && matrix['manpower_cost_saved'][c]) || 0;
+      const inv = (matrix['investment_cost'] && matrix['investment_cost'][c]) || 0;
+
+      const subtotal = copq + mp;
+      const netEbitda = subtotal - inv;
+
+      totalDirectSavings += subtotal;
+      totalNetEbitda += netEbitda;
+
+      const subtotalEl = document.querySelector(`[data-subtotal-col="${c}"]`);
+      if (subtotalEl) subtotalEl.textContent = subtotal.toFixed(2);
+
+      const netEl = document.querySelector(`[data-net-col="${c}"]`);
+      if (netEl) netEl.textContent = netEbitda.toFixed(2);
+    }
+
+    const grandSubtotalEl = document.getElementById('grand-subtotal');
+    if (grandSubtotalEl) grandSubtotalEl.textContent = totalDirectSavings.toFixed(2);
+
+    const grandEbitdaEl = document.getElementById('grand-ebitda-total');
+    if (grandEbitdaEl) grandEbitdaEl.textContent = 'Rs. ' + totalNetEbitda.toFixed(2) + ' L';
+
+    document.getElementById('kpi-total-savings').textContent = 'Rs. ' + copqSavedSum.toFixed(2) + ' L';
+    document.getElementById('kpi-total-manpower').textContent = 'Rs. ' + mpSavedSum.toFixed(2) + ' L';
+    document.getElementById('kpi-total-investment').textContent = 'Rs. ' + invSum.toFixed(2) + ' L';
+    const roi = invSum > 0 ? (totalDirectSavings / invSum).toFixed(2) : 'N/A';
+    document.getElementById('kpi-total-roi').textContent = roi !== 'N/A' ? roi + 'x' : '0.00x';
   }
 
-  [...impactRadios, ...implRadios].forEach(el => el.addEventListener('change', () => {
-    document.getElementById('impact-error').classList.add('hidden');
-    document.getElementById('impl-error').classList.add('hidden');
-    validateForm();
-  }));
-  commentsInput.addEventListener('input', () => {
-    document.getElementById('comments-error').classList.add('hidden');
-    validateForm();
-  });
-  
-  // Initial validation
-  validateForm();
+  const tbody = document.getElementById('grid-matrix-body');
+  tbody.addEventListener('input', recalculateGrid);
+  recalculateGrid();
 
-  document.getElementById('save-progress-btn')
-    .addEventListener('click', async () => {
-    const btn = document.getElementById('save-progress-btn');
-    btn.textContent = 'Saving...';
+  document.getElementById('btn-save-grid').addEventListener('click', () => {
+    showToast('Financial matrix spreadsheet saved successfully.', 'success');
+  });
+}
+
+// ==========================================
+// 7. SUBMIT NEW IDEA MODAL
+// ==========================================
+
+function showNewIdeaModal() {
+  const existing = document.getElementById('new-idea-modal');
+  if (existing) existing.remove();
+
+  const user = activeUser || { name: 'User', email: '' };
+
+  const overlay = document.createElement('div');
+  overlay.id = 'new-idea-modal';
+  overlay.className = 'fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4';
+
+  overlay.innerHTML = `
+    <div class="bg-white border border-gray-400 shadow-2xl max-w-xl w-full text-xs overflow-hidden">
+      <div class="bg-[#1F3864] text-white px-4 py-2 flex items-center justify-between">
+        <h3 class="font-bold text-xs uppercase tracking-wider">SUBMIT NEW STAGE-GATE INITIATIVE (D0)</h3>
+        <button id="close-idea-modal" class="text-white/80 hover:text-white font-bold text-sm leading-none">&times;</button>
+      </div>
+
+      <form id="new-idea-form" class="p-4 space-y-3 bg-white text-gray-800">
+        <div>
+          <label class="block font-bold text-gray-700 mb-1" for="new-title">
+            Idea Title / Initiative Summary <span class="text-red-600">*</span>
+          </label>
+          <input type="text" id="new-title" required placeholder="e.g. Scrap Reduction in Furnace Line 2" class="w-full bg-white border border-gray-400 px-2.5 py-1.5 text-xs focus:outline-none focus:border-[#1F3864]" />
+        </div>
+
+        <div>
+          <label class="block font-semibold text-gray-700 mb-1" for="new-desc">
+            Detailed Problem Statement &amp; Scope
+          </label>
+          <textarea id="new-desc" rows="2" placeholder="Describe the current operational challenge and proposed solution..." class="w-full bg-white border border-gray-400 p-2 text-xs focus:outline-none focus:border-[#1F3864]"></textarea>
+        </div>
+
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <div>
+            <label class="block font-semibold text-gray-700 mb-1" for="new-suggester-name">
+              Suggester / Idea Owner Name <span class="text-red-600">*</span>
+            </label>
+            <input type="text" id="new-suggester-name" required value="${user.name || ''}" class="w-full bg-white border border-gray-400 px-2.5 py-1.5 text-xs focus:outline-none focus:border-[#1F3864]" />
+          </div>
+
+          <div>
+            <label class="block font-semibold text-gray-700 mb-1" for="new-suggester-email">
+              Suggester Email <span class="text-red-600">*</span>
+            </label>
+            <input type="email" id="new-suggester-email" required value="${user.email || ''}" class="w-full bg-white border border-gray-400 px-2.5 py-1.5 text-xs focus:outline-none focus:border-[#1F3864]" />
+          </div>
+        </div>
+
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <div>
+            <label class="block font-semibold text-gray-700 mb-1" for="new-workstream">
+              Target Workstream
+            </label>
+            <select id="new-workstream" class="w-full bg-white border border-gray-400 px-2.5 py-1.5 text-xs focus:outline-none focus:border-[#1F3864]">
+              <option value="Operations">Operations</option>
+              <option value="Maintenance">Maintenance</option>
+              <option value="Production">Production</option>
+              <option value="Engineering">Engineering</option>
+              <option value="Procurement">Procurement</option>
+              <option value="Quality">Quality</option>
+            </select>
+          </div>
+
+          <div>
+            <label class="block font-semibold text-gray-700 mb-1" for="new-ebitda">
+              EBITDA Impact Category
+            </label>
+            <select id="new-ebitda" class="w-full bg-white border border-gray-400 px-2.5 py-1.5 text-xs focus:outline-none focus:border-[#1F3864]">
+              <option value="Cost Reduction">Cost Reduction</option>
+              <option value="Revenue Growth">Revenue Growth</option>
+              <option value="Quality Improvement">Quality Improvement</option>
+              <option value="Safety & Compliance">Safety & Compliance</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="pt-3 border-t border-gray-300 flex items-center justify-end gap-2">
+          <button type="button" id="btn-cancel-idea" class="px-3 py-1.5 bg-gray-100 hover:bg-gray-200 text-gray-700 border border-gray-300 font-semibold text-xs">
+            Cancel
+          </button>
+          <button type="submit" id="btn-submit-idea" class="px-4 py-1.5 bg-[#1F3864] hover:bg-[#152747] text-white border border-[#152747] font-semibold text-xs shadow-none">
+            Submit Idea to D0
+          </button>
+        </div>
+      </form>
+    </div>
+  `;
+
+  document.body.appendChild(overlay);
+
+  const close = () => overlay.remove();
+  overlay.querySelector('#close-idea-modal').onclick = close;
+  overlay.querySelector('#btn-cancel-idea').onclick = close;
+
+  overlay.querySelector('#new-idea-form').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const title = document.getElementById('new-title').value.trim();
+    const description = document.getElementById('new-desc').value.trim();
+    const suggester_name = document.getElementById('new-suggester-name').value.trim();
+    const suggester_email = document.getElementById('new-suggester-email').value.trim();
+    const workstream = document.getElementById('new-workstream').value;
+    const ebitda_category = document.getElementById('new-ebitda').value;
+
+    const btn = document.getElementById('btn-submit-idea');
+    btn.textContent = 'Submitting...';
     btn.disabled = true;
+
     try {
-      const lever = document.getElementById('d0-lever').value;
-      const impact = document.querySelector('input[name="impact"]:checked')?.value;
-      const implementability = document.querySelector('input[name="implementability"]:checked')?.value;
-      
-      await api.saveDraft(id, { 
-        lever,
-        impact,
-        implementability
+      await api.createProject({
+        title,
+        description,
+        suggester_name,
+        suggester_email,
+        workstream,
+        ebitda_category
       });
-      showToast('Draft saved.', 'success');
-    } catch (e) {
-      showToast('Error saving draft: ' + e.message, 'error');
-    } finally {
-      btn.textContent = 'Save Progress';
+      showToast(`Initiative "${title}" submitted to D0 successfully!`, 'success');
+      close();
+      renderDashboard();
+    } catch (err) {
+      showToast('Error creating initiative: ' + err.message, 'error');
+      btn.textContent = 'Submit Idea to D0';
       btn.disabled = false;
     }
   });
+}
 
-  document.getElementById('submit-approval-btn').addEventListener('click', async () => {
-    if (!validateForm()) {
-      const impactChecked = document.querySelector('input[name="impact"]:checked');
-      const implChecked = document.querySelector('input[name="implementability"]:checked');
-      if (!impactChecked) document.getElementById('impact-error').classList.remove('hidden');
-      if (!implChecked) document.getElementById('impl-error').classList.remove('hidden');
-      if (commentsInput.value.trim().length < 10) {
-        document.getElementById('comments-error').classList.remove('hidden');
-        commentsInput.focus();
-      } else if (!impactChecked) {
-        impactRadios[0].focus();
-      }
+// ==========================================
+// 8. PROFILE / ACCOUNT SETTINGS PAGE (#profile)
+// ==========================================
+
+async function renderProfile() {
+  document.title = "User Account & Profile Settings — Lakshya";
+  window.location.hash = '#profile';
+  const app = document.getElementById('app');
+
+  let profile = {};
+  try {
+    profile = await api.getProfile();
+  } catch {
+    profile = activeUser || { name: 'User', email: 'user@company.com', role: 'member' };
+  }
+
+  const roleLabel = (profile.role || 'member').toUpperCase();
+
+  app.innerHTML = `
+    ${getTopNavHtml('profile')}
+    
+    <main class="p-3 md:p-4 max-w-[1100px] mx-auto text-gray-900 text-xs">
+      
+      <!-- Page Header -->
+      <div class="flex items-center justify-between mb-2">
+        <div>
+          <h1 class="text-base font-bold text-[#1F3864] uppercase tracking-tight">USER ACCOUNT &amp; PROFILE SETTINGS</h1>
+          <p class="text-xs text-gray-500">Manage credentials and reviewer access settings.</p>
+        </div>
+        <button onclick="window.location.hash='#dashboard'" class="px-3 py-1 bg-gray-100 hover:bg-gray-200 text-gray-800 border border-gray-300 font-semibold text-xs">
+          &lt; Return to Dashboard
+        </button>
+      </div>
+
+      <!-- Thin horizontal divider -->
+      <div class="border-b border-gray-300 mb-3"></div>
+
+      <!-- Two Side-by-Side Panels -->
+      <div class="grid grid-cols-1 md:grid-cols-2 gap-3.5">
+        
+        <!-- LEFT PANEL: PERSONAL INFORMATION -->
+        <div class="border border-gray-300 bg-white shadow-sm flex flex-col">
+          <div class="bg-[#1F3864] text-white px-3.5 py-2 font-bold text-xs uppercase flex justify-between items-center border-b border-[#152747]">
+            <span>PERSONAL INFORMATION</span>
+            <button id="profile-edit-btn" class="text-xs text-white underline hover:text-gray-200 cursor-pointer">Edit</button>
+          </div>
+          
+          <div class="p-4 flex-1 flex flex-col justify-between">
+            <form id="profile-name-form" class="space-y-4">
+              <div>
+                <label class="block text-gray-500 font-semibold text-xs mb-1">Full Name</label>
+                <div id="name-display-container">
+                  <span id="profile-name-val" class="text-sm font-bold text-gray-900">${profile.name || 'User'}</span>
+                </div>
+                <div id="name-edit-container" class="hidden mt-1">
+                  <input type="text" id="profile-name-input" class="w-full bg-white border border-gray-400 px-2.5 py-1.5 text-xs focus:outline-none focus:border-[#1F3864]" value="${profile.name || ''}" required />
+                  <div class="flex gap-2 mt-2">
+                    <button type="submit" id="btn-save-name" class="px-3 py-1 bg-[#1F3864] hover:bg-[#152747] text-white font-semibold text-xs border border-[#152747]">
+                      Save
+                    </button>
+                    <button type="button" id="btn-cancel-name" class="px-3 py-1 bg-gray-100 hover:bg-gray-200 text-gray-700 font-semibold text-xs border border-gray-300">
+                      Cancel
+                    </button>
+                  </div>
+                </div>
+              </div>
+
+              <div>
+                <label class="block text-gray-500 font-semibold text-xs mb-1">
+                  Email Address <span class="text-gray-400 font-normal">(Read-only)</span>
+                </label>
+                <div class="font-mono text-xs text-gray-700 bg-gray-50 border border-gray-200 px-2.5 py-1.5 select-all">
+                  ${profile.email || ''}
+                </div>
+              </div>
+
+              <div>
+                <label class="block text-gray-500 font-semibold text-xs mb-1">Role / Access Level</label>
+                <div class="text-xs font-bold text-[#1F3864] tracking-wide">
+                  [${roleLabel}]
+                </div>
+              </div>
+            </form>
+
+            <div id="profile-name-status" class="hidden text-xs text-green-700 font-semibold pt-2"></div>
+          </div>
+        </div>
+
+        <!-- RIGHT PANEL: SECURITY & PASSWORD -->
+        <div class="border border-gray-300 bg-white shadow-sm flex flex-col">
+          <div class="bg-[#1F3864] text-white px-3.5 py-2 font-bold text-xs uppercase border-b border-[#152747]">
+            SECURITY &amp; PASSWORD
+          </div>
+          
+          <form id="password-change-form" class="p-4 space-y-3.5 flex-1 flex flex-col justify-between">
+            <div class="space-y-3">
+              <div>
+                <label class="block font-semibold text-gray-700 mb-1" for="current-pwd">Current Password</label>
+                <input type="password" id="current-pwd" required placeholder="••••••••" class="w-full bg-white border border-gray-400 px-2.5 py-1.5 text-xs focus:outline-none focus:border-[#1F3864]" />
+              </div>
+
+              <div>
+                <label class="block font-semibold text-gray-700 mb-1" for="new-pwd">New Password <span class="text-gray-400 font-normal text-[10px]">(Min. 8 chars)</span></label>
+                <input type="password" id="new-pwd" minlength="8" required placeholder="••••••••" class="w-full bg-white border border-gray-400 px-2.5 py-1.5 text-xs focus:outline-none focus:border-[#1F3864]" />
+              </div>
+
+              <div>
+                <label class="block font-semibold text-gray-700 mb-1" for="confirm-new-pwd">Confirm New Password</label>
+                <input type="password" id="confirm-new-pwd" minlength="8" required placeholder="••••••••" class="w-full bg-white border border-gray-400 px-2.5 py-1.5 text-xs focus:outline-none focus:border-[#1F3864]" />
+              </div>
+            </div>
+
+            <div>
+              <div id="pwd-status-msg" class="hidden text-xs font-semibold mb-2"></div>
+              <button type="submit" id="btn-update-pwd" class="px-4 py-2 bg-[#1F3864] hover:bg-[#152747] text-white font-bold text-xs border border-[#152747] transition">
+                Update Password
+              </button>
+            </div>
+          </form>
+        </div>
+
+      </div>
+
+    </main>
+  `;
+
+  bindNavEvents();
+
+  // In-place edit for Full Name
+  const editBtn = document.getElementById('profile-edit-btn');
+  const cancelBtn = document.getElementById('btn-cancel-name');
+  const nameDisplay = document.getElementById('name-display-container');
+  const nameEdit = document.getElementById('name-edit-container');
+  const nameVal = document.getElementById('profile-name-val');
+  const nameInput = document.getElementById('profile-name-input');
+  const statusMsg = document.getElementById('profile-name-status');
+
+  function toggleNameEdit(editing) {
+    if (editing) {
+      nameDisplay.classList.add('hidden');
+      nameEdit.classList.remove('hidden');
+      nameInput.value = nameVal.textContent.trim();
+      nameInput.focus();
+      editBtn.classList.add('hidden');
+    } else {
+      nameDisplay.classList.remove('hidden');
+      nameEdit.classList.add('hidden');
+      editBtn.classList.remove('hidden');
+    }
+  }
+
+  editBtn.addEventListener('click', () => toggleNameEdit(true));
+  cancelBtn.addEventListener('click', () => toggleNameEdit(false));
+
+  document.getElementById('profile-name-form').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const newName = nameInput.value.trim();
+    if (!newName) return;
+
+    const saveBtn = document.getElementById('btn-save-name');
+    saveBtn.textContent = 'Saving...';
+    saveBtn.disabled = true;
+
+    try {
+      await api.updateProfile({ name: newName });
+      nameVal.textContent = newName;
+      if (activeUser) activeUser.name = newName;
+      toggleNameEdit(false);
+      statusMsg.textContent = 'Name updated successfully.';
+      statusMsg.className = 'text-xs text-green-700 font-semibold pt-2 block';
+      setTimeout(() => statusMsg.classList.add('hidden'), 3000);
+    } catch (err) {
+      statusMsg.textContent = 'Error updating name: ' + err.message;
+      statusMsg.className = 'text-xs text-red-600 font-semibold pt-2 block';
+    } finally {
+      saveBtn.textContent = 'Save';
+      saveBtn.disabled = false;
+    }
+  });
+
+  // Password update form
+  const pwdForm = document.getElementById('password-change-form');
+  const currentPwdInput = document.getElementById('current-pwd');
+  const newPwdInput = document.getElementById('new-pwd');
+  const confirmPwdInput = document.getElementById('confirm-new-pwd');
+  const pwdStatusMsg = document.getElementById('pwd-status-msg');
+  const pwdSubmitBtn = document.getElementById('btn-update-pwd');
+
+  pwdForm.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const currentPassword = currentPwdInput.value;
+    const newPassword = newPwdInput.value;
+    const confirmPassword = confirmPwdInput.value;
+
+    pwdStatusMsg.classList.add('hidden');
+
+    if (newPassword !== confirmPassword) {
+      pwdStatusMsg.textContent = 'New passwords do not match.';
+      pwdStatusMsg.className = 'text-xs text-red-600 font-semibold mb-2 block';
       return;
     }
 
-    const stages = ['d0', 'd1', 'd2', 'd3', 'd4'];
-    const nextStageIndex = stages.indexOf(stage) + 1;
-    const to_stage = nextStageIndex < stages.length ? stages[nextStageIndex] : stage;
-    const suggesterName = proj.suggester_name || proj.suggester_email.split('@')[0];
-    
-    showModal('Submit for Approval', `This will advance "${proj.title}" from ${stage.toUpperCase()} to ${to_stage.toUpperCase()} and automatically email ${suggesterName} to notify them. This can't be undone from here. Continue?`, 'Confirm', async () => {
-      const btn = document.getElementById('submit-approval-btn');
-      btn.innerHTML = '<span class="material-symbols-outlined text-sm">mail</span> Submitting...';
-      btn.disabled = true;
-      try {
-        const comments = commentsInput.value;
-        await api.submitApproval(id, { to_stage, comments });
-        showToast(`Project advanced to ${to_stage.toUpperCase()}. ${suggesterName} has been notified.`, 'success');
-        renderDashboard();
-      } catch (e) {
-        showToast('Error submitting approval: ' + e.message, 'error');
-        btn.innerHTML = '<span class="material-symbols-outlined text-sm">mail</span> Submit for Approval';
-        btn.disabled = false;
-      }
-    });
-  });
-}
+    if (newPassword.length < 8) {
+      pwdStatusMsg.textContent = 'New password must be at least 8 characters long.';
+      pwdStatusMsg.className = 'text-xs text-red-600 font-semibold mb-2 block';
+      return;
+    }
 
-function renderSpreadsheetGrid() {
-  const app = document.getElementById('app');
-  app.innerHTML = `
-<!-- TopNavBar -->
-<nav class="bg-surface-container-lowest border-b border-slate-border w-full h-16 flex justify-between items-center px-margin-desktop w-full max-w-container-max-width mx-auto">
-<div class="flex items-center gap-stack-lg">
-<span class="font-headline-lg text-headline-lg font-bold text-primary">InnovationPortal</span>
-<div class="hidden md:flex gap-stack-md ml-stack-lg h-16 items-center">
-<a class="text-secondary hover:text-primary transition-colors font-body-sm text-body-sm flex items-center h-full hover:bg-surface-container-low px-4" href="#">Dashboard</a>
-<a class="text-primary font-bold border-b-2 border-primary h-full flex items-center px-4 font-body-sm text-body-sm mt-4" href="#">Financials</a>
-   <a class="text-secondary hover:text-primary transition-colors font-body-sm text-body-sm flex items-center h-full hover:bg-surface-container-low px-4 ml-auto" href="#profile"><span class="material-symbols-outlined mr-1 text-[18px]">person</span> Profile</a>
-</div>
-</div>
-</nav>
+    pwdSubmitBtn.textContent = 'Updating...';
+    pwdSubmitBtn.disabled = true;
 
-<main class="flex-grow w-full max-w-container-max-width mx-auto px-margin-desktop py-stack-lg flex flex-col gap-stack-lg">
-<!-- Page Header -->
-<header class="flex flex-col gap-stack-sm">
-<h1 class="font-headline-xl text-headline-xl text-primary">Lakshya 25 - D4 Sign Off Grid</h1>
-</header>
-
-<!-- Controls Area -->
-<div class="flex justify-between items-end bg-surface-container-lowest p-gutter rounded border border-slate-border">
-<div class="flex gap-stack-md">
-<button onclick="showToast('Bulk changes saved!', 'success')" class="px-4 py-2 bg-stage-d4-emerald text-white rounded font-body-sm font-semibold hover:opacity-90 transition-colors flex items-center gap-2">
-<span class="material-symbols-outlined text-sm">save</span>Save All
-</button>
-</div>
-</div>
-
-<!-- Financial Matrix -->
-<div class="bg-surface-container-lowest border border-slate-border rounded overflow-hidden">
-<div class="overflow-x-auto">
-<table class="w-full text-left border-collapse min-w-max">
-<thead>
-<tr class="bg-surface-container text-secondary font-label-caps text-label-caps uppercase">
-<th class="py-3 px-4 border-r border-b border-slate-border">Project</th>
-<th class="py-3 px-4 border-r border-b border-slate-border">COPQ Charges</th>
-<th class="py-3 px-4 border-r border-b border-slate-border">Manpower Savings</th>
-<th class="py-3 px-4 border-r border-b border-slate-border">Investment</th>
-<th class="py-3 px-4 border-r border-b border-slate-border bg-surface-container-high">Computed: Actuals</th>
-<th class="py-3 px-4 border-b border-slate-border bg-surface-container-high">Computed: ROI</th>
-</tr>
-</thead>
-<tbody class="font-data-tabular text-data-tabular text-on-surface" id="grid-body">
-<!-- Render rows dynamically -->
-</tbody>
-</table>
-</div>
-</div>
-</main>
-<!-- Footer -->
-<div class="sticky bottom-0 w-full bg-surface-container-lowest/80 backdrop-blur-md border-t border-slate-border py-4 z-50">
-<div class="max-w-container-max-width mx-auto px-margin-desktop flex justify-between items-center">
-<a href="#" id="back-btn" class="flex items-center gap-2 text-secondary hover:text-primary font-body-sm transition-colors cursor-pointer">
-<span class="material-symbols-outlined text-lg">arrow_back</span>Back to Dashboard
-</a>
-</div>
-</div>
-  `;
-
-  document.getElementById('back-btn').addEventListener('click', (e) => {
-    e.preventDefault();
-    renderDashboard();
-  });
-
-  const tbody = document.getElementById('grid-body');
-  for(let i=0; i<15; i++) {
-    tbody.innerHTML += `
-      <tr class="hover:bg-surface-container/50 transition-colors">
-        <td class="py-2 px-4 border-r border-b border-slate-border text-secondary font-semibold">Project ${i+1}</td>
-        <td class="py-1 px-2 border-r border-b border-slate-border bg-yellow-50/30 hover:bg-surface-container-lowest transition-colors">
-          <input type="number" class="w-full bg-transparent text-right font-data-tabular focus:outline-none p-1 copq" value="5000">
-        </td>
-        <td class="py-1 px-2 border-r border-b border-slate-border bg-yellow-50/30 hover:bg-surface-container-lowest transition-colors">
-          <input type="number" class="w-full bg-transparent text-right font-data-tabular focus:outline-none p-1 mp" value="2000">
-        </td>
-        <td class="py-1 px-2 border-r border-b border-slate-border bg-yellow-50/30 hover:bg-surface-container-lowest transition-colors">
-          <input type="number" class="w-full bg-transparent text-right font-data-tabular focus:outline-none p-1 inv" value="10000">
-        </td>
-        <td class="py-2 px-4 border-r border-b border-slate-border text-right font-semibold bg-surface-container-lowest text-stage-d0-blue actuals">7000</td>
-        <td class="py-2 px-4 border-b border-slate-border text-right font-semibold bg-surface-container-lowest text-stage-d4-emerald roi">0.70</td>
-      </tr>
-    `;
-  }
-
-  // Setup reactive recalculation
-  tbody.addEventListener('input', (e) => {
-    if (e.target.tagName === 'INPUT') {
-      const row = e.target.closest('tr');
-      const copq = parseFloat(row.querySelector('.copq').value) || 0;
-      const mp = parseFloat(row.querySelector('.mp').value) || 0;
-      const inv = parseFloat(row.querySelector('.inv').value) || 0;
-      
-      const actuals = copq + mp;
-      const roi = inv > 0 ? (actuals / inv).toFixed(2) : 0;
-      
-      row.querySelector('.actuals').textContent = actuals;
-      row.querySelector('.roi').textContent = roi;
+    try {
+      await api.changePassword(currentPassword, newPassword);
+      pwdStatusMsg.textContent = 'Password updated successfully.';
+      pwdStatusMsg.className = 'text-xs text-green-700 font-semibold mb-2 block';
+      pwdForm.reset();
+    } catch (err) {
+      pwdStatusMsg.textContent = err.message || 'Error updating password.';
+      pwdStatusMsg.className = 'text-xs text-red-600 font-semibold mb-2 block';
+    } finally {
+      pwdSubmitBtn.textContent = 'Update Password';
+      pwdSubmitBtn.disabled = false;
     }
   });
 }
 
+// ==========================================
+// 9. ROUTING & ROUTE GUARDS
+// ==========================================
 
-// Check auth state on load
-async function init() {
-  const token = localStorage.getItem('lakshya_token');
-  if (token) {
-    renderDashboard();
-  } else {
-    renderLandingPage();
-  }
-}
+async function handleRouting() {
+  const hash = window.location.hash || '#dashboard';
 
-init();
+  // Check auth session
+  const { data: { session } } = await supabase.auth.getSession();
 
-function handleRouting() {
-  const hash = window.location.hash || '#';
-  if (!localStorage.getItem('lakshya_token') && hash !== '#login') {
-    window.location.hash = '#login';
+  if (!session) {
+    activeUser = null;
+    if (hash === '#signup') {
+      renderSignUp();
+    } else if (hash === '#forgot-password') {
+      renderForgotPassword();
+    } else {
+      if (hash !== '#signin') {
+        window.location.hash = '#signin';
+      }
+      renderSignIn();
+    }
     return;
   }
-  
-  if (hash === '#' || hash === '#login' || hash === '#dashboard') {
-    if (localStorage.getItem('lakshya_token')) renderDashboard();
-    else renderLandingPage();
+
+  // User is authenticated
+  if (!activeUser) {
+    await refreshActiveUser();
+  }
+
+  if (hash === '#signin' || hash === '#signup' || hash === '#forgot-password' || hash === '#login' || hash === '#') {
+    window.location.hash = '#dashboard';
+    renderDashboard();
+  } else if (hash === '#dashboard') {
+    renderDashboard();
   } else if (hash === '#grid') {
     renderSpreadsheetGrid();
   } else if (hash.startsWith('#project/')) {
@@ -963,235 +1613,19 @@ function handleRouting() {
   } else if (hash === '#profile') {
     renderProfile();
   } else {
-    render404();
+    renderDashboard();
   }
 }
 
 window.addEventListener('hashchange', handleRouting);
 
-function render404() {
-  document.title = "Page Not Found — Lakshya Innovation Portal";
-  const app = document.getElementById('app');
-  app.innerHTML = `
-    <div class="h-screen w-full flex flex-col items-center justify-center bg-obsidian text-white">
-      <h1 class="font-display-lg text-[100px] font-bold text-stage-d0-blue">404</h1>
-      <h2 class="font-headline-xl text-secondary mb-8">Page not found</h2>
-      <button onclick="window.location.hash='#dashboard'" class="px-6 py-3 bg-primary text-on-primary rounded font-bold hover:opacity-90">Return to Dashboard</button>
-    </div>
-  `;
-}
-
-async function renderProfile() {
-  document.title = "Profile — Lakshya Innovation Portal";
-  window.location.hash = '#profile';
-  const app = document.getElementById('app');
-  const user = JSON.parse(localStorage.getItem('lakshya_user') || '{}');
-  const roleBadge = user.role === 'admin' ? '<span class="bg-primary text-white text-[10px] px-2 py-0.5 rounded-full uppercase ml-2">Admin</span>' : '<span class="bg-surface-variant text-secondary text-[10px] px-2 py-0.5 rounded-full uppercase ml-2">User</span>';
-  
-  app.innerHTML = `
-    <header class="bg-surface-container-lowest border-b border-slate-border flex items-center justify-between px-4 h-16 w-full shrink-0 relative z-20">
-      <div class="flex items-center gap-4">
-        <div class="h-8 w-8 bg-blue-600 rounded-full flex items-center justify-center text-white font-bold cursor-pointer" onclick="window.location.hash='#dashboard'">L</div>
-        <h1 class="font-headline-lg text-headline-lg font-bold text-primary">LAKSHYA INNOVATION PORTAL</h1>
-      </div>
-      <div class="flex items-center gap-6">
-        <button onclick="window.location.hash='#dashboard'" class="text-xs border border-slate-border px-3 py-1 rounded text-primary hover:bg-surface-container-low transition flex items-center gap-1"><span class="material-symbols-outlined text-[14px]">arrow_back</span> Dashboard</button>
-        <button data-logout-btn class="text-xs border border-slate-border px-3 py-1 rounded text-primary hover:bg-surface-container-low transition">Log Out</button>
-      </div>
-    </header>
-    <main class="flex-1 w-full max-w-container-max-width mx-auto px-margin-desktop py-stack-lg">
-      <div class="flex items-center gap-stack-md mb-stack-lg">
-        <h2 class="font-headline-xl text-headline-xl font-bold text-primary">User Profile</h2>
-      </div>
-
-      <div class="grid grid-cols-1 md:grid-cols-2 gap-stack-lg">
-        <!-- Profile Info -->
-        <div class="bg-surface-container-lowest border border-slate-border rounded p-gutter flex flex-col gap-stack-md relative">
-          <button id="edit-profile-btn" class="absolute top-gutter right-gutter text-sm text-primary hover:underline flex items-center gap-1"><span class="material-symbols-outlined text-[16px]">edit</span> Edit</button>
-          
-          <h3 class="font-headline-sm font-bold text-primary border-b border-slate-border pb-2 mb-2">Personal Information</h3>
-          
-          <form id="profile-form" class="flex flex-col gap-4">
-            <div class="flex flex-col gap-1">
-              <label class="font-label-caps text-label-caps text-secondary uppercase tracking-wider">Name</label>
-              <div id="name-display" class="font-body-md text-primary font-medium py-1">Loading...</div>
-              <input type="text" id="name-input" class="hidden w-full p-2 border border-slate-border rounded focus:border-primary focus:ring-1 outline-none font-body-md bg-surface-container-lowest transition-colors" required minlength="2">
-            </div>
-            
-            <div class="flex flex-col gap-1">
-              <label class="font-label-caps text-label-caps text-secondary uppercase tracking-wider">Email <span class="text-xs opacity-50 lowercase normal-case ml-2">(cannot be changed)</span></label>
-              <div id="email-display" class="font-body-md text-secondary py-1 cursor-not-allowed">Loading...</div>
-            </div>
-
-            <div class="flex flex-col gap-1">
-              <label class="font-label-caps text-label-caps text-secondary uppercase tracking-wider">Role</label>
-              <div id="role-display" class="font-body-md text-primary py-1">Loading...</div>
-            </div>
-
-            <div class="flex flex-col gap-1">
-              <label class="font-label-caps text-label-caps text-secondary uppercase tracking-wider">Member Since</label>
-              <div id="created-display" class="font-body-md text-secondary py-1">Loading...</div>
-            </div>
-
-            <div id="edit-actions" class="hidden flex gap-3 mt-2">
-              <button type="button" id="cancel-edit-btn" class="px-4 py-2 font-body-sm font-semibold text-secondary hover:bg-surface-container-low rounded border border-transparent transition-colors">Cancel</button>
-              <button type="submit" id="save-profile-btn" class="px-4 py-2 font-body-sm font-semibold bg-primary text-on-primary rounded hover:opacity-90 transition-opacity">Save Changes</button>
-            </div>
-          </form>
-        </div>
-
-        <!-- Security -->
-        <div class="bg-surface-container-lowest border border-slate-border rounded p-gutter flex flex-col gap-stack-md">
-          <h3 class="font-headline-sm font-bold text-primary border-b border-slate-border pb-2 mb-2">Security</h3>
-          
-          <form id="password-form" class="flex flex-col gap-4">
-            <div class="flex flex-col gap-1">
-              <label class="font-label-caps text-label-caps text-secondary uppercase tracking-wider">Current Password</label>
-              <input type="password" id="current-password" class="w-full p-2 border border-slate-border rounded focus:border-primary focus:ring-1 outline-none font-body-md bg-surface-container-lowest transition-colors" required>
-            </div>
-            
-            <div class="flex flex-col gap-1">
-              <label class="font-label-caps text-label-caps text-secondary uppercase tracking-wider">New Password</label>
-              <input type="password" id="new-password" class="w-full p-2 border border-slate-border rounded focus:border-primary focus:ring-1 outline-none font-body-md bg-surface-container-lowest transition-colors" required minlength="6">
-            </div>
-
-            <div class="flex flex-col gap-1">
-              <label class="font-label-caps text-label-caps text-secondary uppercase tracking-wider">Confirm New Password</label>
-              <input type="password" id="confirm-password" class="w-full p-2 border border-slate-border rounded focus:border-primary focus:ring-1 outline-none font-body-md bg-surface-container-lowest transition-colors" required minlength="6">
-              <div id="password-error" class="text-error font-body-sm mt-1 hidden">Passwords do not match</div>
-            </div>
-
-            <button type="submit" id="change-password-btn" class="mt-2 px-4 py-2 font-body-sm font-semibold bg-stage-d0-blue text-white rounded hover:opacity-90 transition-opacity self-start">Update Password</button>
-          </form>
-        </div>
-      </div>
-    </main>
-  `;
-
-  // Fetch data
-  let profile = {};
-  try {
-    profile = await api.getProfile();
-  } catch(e) {
-    showToast('Failed to load profile', 'error');
-    window.location.hash = '#dashboard';
-    return;
+supabase.auth.onAuthStateChange(async (event, session) => {
+  if (event === 'SIGNED_IN' || event === 'USER_UPDATED') {
+    await refreshActiveUser();
+  } else if (event === 'SIGNED_OUT') {
+    activeUser = null;
+    window.location.hash = '#signin';
   }
+});
 
-  // Populate data
-  document.getElementById('name-display').textContent = profile.name;
-  document.getElementById('name-input').value = profile.name;
-  document.getElementById('email-display').textContent = profile.email;
-  
-  const pRoleBadge = profile.role === 'admin' ? '<span class="bg-primary text-white text-[10px] px-2 py-0.5 rounded-full uppercase ml-2">Admin</span>' : '<span class="bg-surface-variant text-secondary text-[10px] px-2 py-0.5 rounded-full uppercase ml-2">User</span>';
-  document.getElementById('role-display').innerHTML = (profile.role === 'admin' ? 'Administrator' : 'Standard User') + pRoleBadge;
-  
-  const createdDate = new Date(profile.created_at);
-  document.getElementById('created-display').textContent = createdDate.toLocaleDateString() + ' (Time: ' + createdDate.toLocaleTimeString() + ')';
-
-  // Log Out Modal
-  document.querySelector('[data-logout-btn]').addEventListener('click', () => {
-    showModal('Log Out', 'Log out of Lakshya Innovation System?', 'Log Out', () => {
-      localStorage.removeItem('lakshya_token');
-      localStorage.removeItem('lakshya_user');
-      window.location.hash = '#login';
-    });
-  });
-
-  // Edit Mode toggle
-  const editBtn = document.getElementById('edit-profile-btn');
-  const cancelBtn = document.getElementById('cancel-edit-btn');
-  const nameDisplay = document.getElementById('name-display');
-  const nameInput = document.getElementById('name-input');
-  const editActions = document.getElementById('edit-actions');
-
-  function toggleEdit(editing) {
-    if (editing) {
-      nameDisplay.classList.add('hidden');
-      nameInput.classList.remove('hidden');
-      editActions.classList.remove('hidden');
-      editBtn.classList.add('hidden');
-      nameInput.focus();
-    } else {
-      nameDisplay.classList.remove('hidden');
-      nameInput.classList.add('hidden');
-      editActions.classList.add('hidden');
-      editBtn.classList.remove('hidden');
-      nameInput.value = profile.name; // reset
-    }
-  }
-
-  editBtn.addEventListener('click', () => toggleEdit(true));
-  cancelBtn.addEventListener('click', () => toggleEdit(false));
-
-  // Profile Save
-  document.getElementById('profile-form').addEventListener('submit', async (e) => {
-    e.preventDefault();
-    const newName = nameInput.value.trim();
-    if (!newName) return;
-    
-    const saveBtn = document.getElementById('save-profile-btn');
-    saveBtn.textContent = 'Saving...';
-    saveBtn.disabled = true;
-    
-    try {
-      const updated = await api.updateProfile({ name: newName });
-      profile.name = updated.name;
-      nameDisplay.textContent = updated.name;
-      
-      // Update local storage so headers everywhere get the new name instantly
-      const localUser = JSON.parse(localStorage.getItem('lakshya_user') || '{}');
-      localUser.name = updated.name;
-      localStorage.setItem('lakshya_user', JSON.stringify(localUser));
-      
-      showToast('Profile updated successfully', 'success');
-      toggleEdit(false);
-    } catch (err) {
-      showToast('Error updating profile: ' + err.message, 'error');
-    } finally {
-      saveBtn.textContent = 'Save Changes';
-      saveBtn.disabled = false;
-    }
-  });
-
-  // Password Change
-  const pwdForm = document.getElementById('password-form');
-  const newPwd = document.getElementById('new-password');
-  const confPwd = document.getElementById('confirm-password');
-  const pwdErr = document.getElementById('password-error');
-
-  function validatePwd() {
-    if (newPwd.value !== confPwd.value) {
-      pwdErr.classList.remove('hidden');
-      return false;
-    }
-    pwdErr.classList.add('hidden');
-    return true;
-  }
-
-  newPwd.addEventListener('input', validatePwd);
-  confPwd.addEventListener('input', validatePwd);
-
-  pwdForm.addEventListener('submit', async (e) => {
-    e.preventDefault();
-    if (!validatePwd()) return;
-
-    const currentPassword = document.getElementById('current-password').value;
-    const newPassword = newPwd.value;
-    
-    const chgBtn = document.getElementById('change-password-btn');
-    chgBtn.textContent = 'Updating...';
-    chgBtn.disabled = true;
-    
-    try {
-      await api.changePassword({ currentPassword, newPassword });
-      showToast('Password updated successfully', 'success');
-      pwdForm.reset();
-    } catch (err) {
-      showToast('Error: ' + err.message, 'error');
-    } finally {
-      chgBtn.textContent = 'Update Password';
-      chgBtn.disabled = false;
-    }
-  });
-}
+handleRouting();
