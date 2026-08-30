@@ -1,7 +1,17 @@
+import dotenv from 'dotenv';
+dotenv.config();
+
 import { query } from './src/config/db.js';
 import bcrypt from 'bcrypt';
 
-const hash = await bcrypt.hash('admin123', 10);
+// Seed password must come from env — set SEED_ADMIN_PASSWORD in server/.env
+const seedPassword = process.env.SEED_ADMIN_PASSWORD;
+if (!seedPassword) {
+  console.error('❌ Set SEED_ADMIN_PASSWORD in server/.env before running seed.js');
+  process.exit(1);
+}
+
+const hash = await bcrypt.hash(seedPassword, 10);
 await query(
   `INSERT INTO users (email, password_hash, name, role, email_verified)
    VALUES ($1, $2, $3, $4, $5)

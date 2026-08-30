@@ -8,8 +8,16 @@ const patch = (url, body, token) => fetch(url, { method: 'PATCH', headers: h(tok
 const get = (url, token) => fetch(url, { headers: h(token) }).then(r => r.json());
 
 // --- Step 1: Login
+// Credentials must come from environment — never hardcode them here
+// Set SMOKE_TEST_EMAIL and SMOKE_TEST_PASSWORD in server/.env before running
+const SMOKE_EMAIL = process.env.SMOKE_TEST_EMAIL;
+const SMOKE_PASS = process.env.SMOKE_TEST_PASSWORD;
+if (!SMOKE_EMAIL || !SMOKE_PASS) {
+  console.error('❌  Set SMOKE_TEST_EMAIL and SMOKE_TEST_PASSWORD in server/.env before running this test');
+  process.exit(1);
+}
 console.log('\n🔐 Step 1: Login...');
-const loginRes = await post(`${BASE}/api/auth/login`, { email: 'admin@lakshya.com', password: 'admin123' });
+const loginRes = await post(`${BASE}/api/auth/login`, { email: SMOKE_EMAIL, password: SMOKE_PASS });
 if (!loginRes.token) { console.error('❌ Login failed:', loginRes); process.exit(1); }
 const token = loginRes.token;
 console.log('✅ Login OK - user:', loginRes.user.email, '| role:', loginRes.user.role);

@@ -185,6 +185,16 @@ function renderSignIn(flashMsg = '') {
 
           <div id="signin-error" class="hidden text-red-600 text-xs p-2 bg-red-50 border border-red-200"></div>
 
+          <!-- Shown only when email is not confirmed -->
+          <div id="signin-unverified" class="hidden bg-amber-50 border border-amber-300 text-amber-800 p-2.5 text-xs">
+            <p class="font-semibold mb-1">Email address not yet verified.</p>
+            <p class="mb-2">Please check your inbox and click the confirmation link before signing in.</p>
+            <button id="btn-resend-verify" class="px-3 py-1 bg-[#1F3864] hover:bg-[#152747] text-white font-semibold text-xs border border-[#152747] transition">
+              Resend Verification Email
+            </button>
+            <span id="resend-status" class="ml-2 text-[11px] text-green-700 hidden">Verification email resent.</span>
+          </div>
+
           <div>
             <label class="block font-bold text-gray-700 mb-1" for="signin-email">Corporate Email Address</label>
             <input type="email" id="signin-email" required placeholder="name@company.com" class="w-full bg-white border border-gray-400 px-2.5 py-1.5 text-xs focus:outline-none focus:border-[#1F3864]" />
@@ -214,14 +224,18 @@ function renderSignIn(flashMsg = '') {
     </div>
   `;
 
-  document.getElementById('signin-form').addEventListener('submit', async (e) => {
+  const form = document.getElementById('signin-form');
+
+  form.addEventListener('submit', async (e) => {
     e.preventDefault();
     const email = document.getElementById('signin-email').value.trim();
     const password = document.getElementById('signin-pwd').value;
     const errorEl = document.getElementById('signin-error');
+    const unverifiedEl = document.getElementById('signin-unverified');
     const submitBtn = document.getElementById('btn-signin-submit');
 
     errorEl.classList.add('hidden');
+    unverifiedEl.classList.add('hidden');
     errorEl.textContent = '';
     submitBtn.textContent = 'Authenticating...';
     submitBtn.disabled = true;
@@ -231,8 +245,30 @@ function renderSignIn(flashMsg = '') {
       await refreshActiveUser();
       window.location.hash = '#dashboard';
     } catch (err) {
-      errorEl.textContent = err.message || 'Invalid email or password';
-      errorEl.classList.remove('hidden');
+      const msg = err.message || '';
+      // Supabase returns this specific message for unconfirmed emails
+      if (msg.toLowerCase().includes('email not confirmed') || msg.toLowerCase().includes('not confirmed')) {
+        unverifiedEl.classList.remove('hidden');
+
+        // Wire up resend button
+        const resendBtn = document.getElementById('btn-resend-verify');
+        const resendStatus = document.getElementById('resend-status');
+        resendBtn.onclick = async () => {
+          resendBtn.textContent = 'Sending...';
+          resendBtn.disabled = true;
+          try {
+            await api.resendVerification(email);
+            resendStatus.classList.remove('hidden');
+            resendBtn.textContent = 'Resend Verification Email';
+          } catch {
+            resendBtn.textContent = 'Resend Verification Email';
+            resendBtn.disabled = false;
+          }
+        };
+      } else {
+        errorEl.textContent = msg || 'Invalid email or password. Please try again.';
+        errorEl.classList.remove('hidden');
+      }
       submitBtn.textContent = 'Sign In';
       submitBtn.disabled = false;
     }
@@ -325,8 +361,19 @@ function renderSignUp() {
 
     try {
       await api.signUp(email, password, name);
-      window.location.hash = '#signin';
-      renderSignIn('Account created successfully. Please sign in with your credentials.');
+      // Show email verification pending notice — do NOT redirect to dashboard.
+      // User must confirm their email before they can sign in.
+      const form = document.getElementById('signup-form');
+      form.innerHTML = `
+        <div class="bg-green-50 border border-green-300 text-green-800 p-3 text-xs">
+          <p class="font-bold mb-1">✔ Account created — verification email sent</p>
+          <p>We've sent a confirmation link to <strong>${email}</strong>.</p>
+          <p class="mt-1">Please check your inbox (and spam folder) and click the link to activate your account before signing in.</p>
+        </div>
+        <div class="pt-3 text-center text-xs border-t border-gray-200">
+          <a href="#signin" class="text-[#1F3864] font-semibold hover:underline">Back to Sign In</a>
+        </div>
+      `;
     } catch (err) {
       errorEl.textContent = err.message || 'Error creating account. Please try again.';
       errorEl.classList.remove('hidden');

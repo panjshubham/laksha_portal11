@@ -65,6 +65,15 @@ export const api = {
     return data;
   },
 
+  async resendVerification(email) {
+    const { data, error } = await supabase.auth.resend({
+      type: 'signup',
+      email,
+    });
+    if (error) throw error;
+    return data;
+  },
+
   async getProfile() {
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) throw new Error('Not authenticated');
