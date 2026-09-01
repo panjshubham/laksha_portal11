@@ -6,7 +6,7 @@ import { dashboardRouter } from './routes/dashboard.routes.js';
 import { projectsRouter } from './routes/projects.routes.js';
 import { usersRouter } from './routes/users.routes.js';
 
-const app = express();
+export const app = express();
 
 app.use(cors());
 app.use(express.json());
@@ -20,6 +20,11 @@ app.get('/health', (req, res) => {
   res.json({ status: 'ok' });
 });
 
-app.listen(env.PORT, () => {
-  console.log(`Server listening on port ${env.PORT}`);
-});
+// Start local listener if not running in Vercel serverless environment
+if (!process.env.VERCEL) {
+  app.listen(env.PORT, () => {
+    console.log(`Server listening on port ${env.PORT}`);
+  });
+}
+
+export default app;

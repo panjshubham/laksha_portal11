@@ -1,5 +1,4 @@
 import { api } from './api.js';
-import { supabase } from './supabase.js';
 
 // ==========================================
 // STATE MANAGEMENT & SESSION
@@ -156,6 +155,21 @@ function bindNavEvents() {
   }
 }
 
+// Password toggle helper
+function attachPasswordToggle(inputId, toggleBtnId) {
+  const input = document.getElementById(inputId);
+  const btn = document.getElementById(toggleBtnId);
+  if (!input || !btn) return;
+
+  btn.addEventListener('click', () => {
+    const isPassword = input.type === 'password';
+    input.type = isPassword ? 'text' : 'password';
+    btn.innerHTML = isPassword
+      ? `<svg class="w-4 h-4 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.88 9.88l-3.29-3.29m7.532 7.532l3.29 3.29M3 3l18 18"/></svg>`
+      : `<svg class="w-4 h-4 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"/></svg>`;
+  });
+}
+
 // ==========================================
 // 1. SIGN IN PAGE (#signin)
 // ==========================================
@@ -166,63 +180,123 @@ function renderSignIn(flashMsg = '') {
 
   app.innerHTML = `
     <div class="min-h-screen bg-[#F1F5F9] flex flex-col justify-center items-center p-4 text-xs font-sans">
-      <div class="max-w-sm w-full bg-white border border-gray-400 shadow-md overflow-hidden">
+      <div class="max-w-md w-full auth-card overflow-hidden">
         
-        <div class="bg-[#1F3864] text-white p-4 text-center border-b border-[#152747]">
-          <div class="inline-block bg-[#2F5597] text-white font-bold text-xs px-2.5 py-0.5 border border-white/30 tracking-widest mb-1">
+        <div class="auth-header text-white p-5 text-center border-b border-[#152747]">
+          <div class="inline-block bg-[#2F5597] text-white font-bold text-xs px-2.5 py-0.5 border border-white/30 tracking-widest mb-1.5 rounded-sm">
             LAKSHYA
           </div>
-          <h1 class="text-sm font-bold uppercase tracking-wider text-white">Stage-Gate Innovation Portal</h1>
-          <p class="text-[11px] text-[#D9E1F2] mt-0.5">Enterprise User Sign-In</p>
+          <h1 class="text-base font-bold uppercase tracking-wider text-white">Stage-Gate Innovation Portal</h1>
+          <p class="text-xs text-[#D9E1F2] mt-0.5">Enterprise Portal Authentication</p>
         </div>
 
-        <form id="signin-form" class="p-5 space-y-3 bg-white text-gray-800">
+        <form id="signin-form" class="p-6 space-y-4 bg-white text-gray-800">
           ${flashMsg ? `
-            <div id="signin-flash" class="bg-green-50 border border-green-300 text-green-800 p-2 text-xs">
-              ${flashMsg}
+            <div id="signin-flash" class="bg-green-50 border border-green-300 text-green-800 p-2.5 rounded text-xs flex items-center gap-2">
+              <span>✔</span>
+              <span>${flashMsg}</span>
             </div>
           ` : ''}
 
-          <div id="signin-error" class="hidden text-red-600 text-xs p-2 bg-red-50 border border-red-200"></div>
+          <div id="signin-error" class="hidden text-red-600 text-xs p-3 bg-red-50 border border-red-200 rounded leading-relaxed"></div>
 
-          <!-- Shown only when email is not confirmed -->
-          <div id="signin-unverified" class="hidden bg-amber-50 border border-amber-300 text-amber-800 p-2.5 text-xs">
-            <p class="font-semibold mb-1">Email address not yet verified.</p>
-            <p class="mb-2">Please check your inbox and click the confirmation link before signing in.</p>
-            <button id="btn-resend-verify" class="px-3 py-1 bg-[#1F3864] hover:bg-[#152747] text-white font-semibold text-xs border border-[#152747] transition">
-              Resend Verification Email
-            </button>
-            <span id="resend-status" class="ml-2 text-[11px] text-green-700 hidden">Verification email resent.</span>
+          <!-- Unverified account banner -->
+          <div id="signin-unverified" class="hidden bg-amber-50 border border-amber-300 text-amber-900 p-3.5 rounded text-xs">
+            <div class="flex items-start gap-2">
+              <span class="text-base leading-none text-amber-600">⚠️</span>
+              <div class="flex-1">
+                <p class="font-bold mb-1">Email verification required</p>
+                <p class="mb-2 text-gray-700 leading-normal">
+                  Your account has been created, but your email address <strong id="unverified-email-txt"></strong> is not yet verified. Please check your inbox and click the verification link.
+                </p>
+                <div class="flex items-center gap-2 pt-1">
+                  <button type="button" id="btn-resend-verify" class="px-3 py-1.5 bg-[#1F3864] hover:bg-[#152747] text-white font-semibold text-xs rounded transition flex items-center gap-1.5">
+                    <span>Resend Verification Email</span>
+                  </button>
+                  <span id="resend-status" class="text-[11px] text-green-700 font-medium hidden"></span>
+                </div>
+              </div>
+            </div>
           </div>
 
           <div>
-            <label class="block font-bold text-gray-700 mb-1" for="signin-email">Corporate Email Address</label>
-            <input type="email" id="signin-email" required placeholder="name@company.com" class="w-full bg-white border border-gray-400 px-2.5 py-1.5 text-xs focus:outline-none focus:border-[#1F3864]" />
+            <label class="block font-semibold text-gray-700 mb-1" for="signin-email">Corporate Email Address</label>
+            <input type="email" id="signin-email" required placeholder="name@company.com" class="auth-input" />
           </div>
 
           <div>
-            <label class="block font-bold text-gray-700 mb-1" for="signin-pwd">Password</label>
-            <input type="password" id="signin-pwd" required placeholder="••••••••" class="w-full bg-white border border-gray-400 px-2.5 py-1.5 text-xs focus:outline-none focus:border-[#1F3864]" />
+            <div class="flex items-center justify-between mb-1">
+              <label class="font-semibold text-gray-700" for="signin-pwd">Password</label>
+              <a href="#forgot-password" class="text-xs text-[#1F3864] hover:underline font-medium">Forgot password?</a>
+            </div>
+            <div class="relative">
+              <input type="password" id="signin-pwd" required placeholder="••••••••" class="auth-input pr-10" />
+              <button type="button" id="toggle-signin-pwd" class="absolute right-2.5 top-1/2 -translate-y-1/2 p-1 text-gray-400 hover:text-gray-600 focus:outline-none">
+                <svg class="w-4 h-4 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"/></svg>
+              </button>
+            </div>
           </div>
 
-          <div class="pt-1">
-            <button type="submit" id="btn-signin-submit" class="w-full py-2 bg-[#1F3864] hover:bg-[#152747] text-white font-bold text-xs uppercase tracking-wider border border-[#152747] transition">
+          <!-- Quick Fill Role Presets for Testing / Demo -->
+          <div class="bg-gray-50 border border-gray-200 p-2.5 rounded text-xs">
+            <div class="text-[11px] text-gray-500 font-semibold uppercase tracking-wider mb-1.5 flex items-center justify-between">
+              <span>Quick Login Presets:</span>
+              <span class="text-[10px] text-blue-600 font-normal">Click to autofill</span>
+            </div>
+            <div class="grid grid-cols-2 gap-2">
+              <button type="button" id="fill-admin-btn" class="py-1 px-2 bg-purple-50 hover:bg-purple-100 border border-purple-200 text-purple-900 rounded font-semibold text-left transition flex items-center justify-between">
+                <span>👑 Admin</span>
+                <span class="text-[10px] text-purple-600 font-mono">admin@lakshya.com</span>
+              </button>
+              <button type="button" id="fill-user-btn" class="py-1 px-2 bg-blue-50 hover:bg-blue-100 border border-blue-200 text-blue-900 rounded font-semibold text-left transition flex items-center justify-between">
+                <span>👤 Employee</span>
+                <span class="text-[10px] text-blue-600 font-mono">vikram@lakshya.com</span>
+              </button>
+            </div>
+          </div>
+
+          <div class="pt-2">
+            <button type="submit" id="btn-signin-submit" class="auth-btn-primary">
               Sign In
             </button>
           </div>
 
-          <div class="flex items-center justify-between pt-2 border-t border-gray-200 text-xs">
-            <a href="#signup" class="text-[#1F3864] font-semibold hover:underline">Don't have an account? Sign Up</a>
-            <a href="#forgot-password" class="text-gray-500 hover:text-gray-800 hover:underline">Forgot password?</a>
+          <div class="text-center pt-3 border-t border-gray-200 text-xs text-gray-600">
+            Don't have an account yet? 
+            <a href="#signup" class="text-[#1F3864] font-bold hover:underline ml-1">Create Account</a>
           </div>
         </form>
 
       </div>
       <div class="text-center mt-4 text-gray-500 text-[11px]">
-        Lakshya Innovation &amp; Operational Excellence System &bull; Confidential
+        Lakshya Innovation &amp; Operational Excellence System &bull; Enterprise Secure
       </div>
     </div>
   `;
+
+  attachPasswordToggle('signin-pwd', 'toggle-signin-pwd');
+
+  // Wire quick autofill buttons
+  const emailInput = document.getElementById('signin-email');
+  const pwdInput = document.getElementById('signin-pwd');
+  const fillAdmin = document.getElementById('fill-admin-btn');
+  const fillUser = document.getElementById('fill-user-btn');
+
+  if (fillAdmin) {
+    fillAdmin.addEventListener('click', () => {
+      emailInput.value = 'admin@lakshya.com';
+      pwdInput.value = 'Password123!';
+      showToast('Admin credentials filled!', 'success');
+    });
+  }
+
+  if (fillUser) {
+    fillUser.addEventListener('click', () => {
+      emailInput.value = '93.shubhampanjiyara@gmail.com';
+      pwdInput.value = 'Password123!';
+      showToast('User credentials filled!', 'success');
+    });
+  }
 
   const form = document.getElementById('signin-form');
 
@@ -232,6 +306,7 @@ function renderSignIn(flashMsg = '') {
     const password = document.getElementById('signin-pwd').value;
     const errorEl = document.getElementById('signin-error');
     const unverifiedEl = document.getElementById('signin-unverified');
+    const unverifiedEmailTxt = document.getElementById('unverified-email-txt');
     const submitBtn = document.getElementById('btn-signin-submit');
 
     errorEl.classList.add('hidden');
@@ -243,14 +318,17 @@ function renderSignIn(flashMsg = '') {
     try {
       await api.signIn(email, password);
       await refreshActiveUser();
-      window.location.hash = '#dashboard';
+      if (activeUser?.role === 'admin') {
+        window.location.hash = '#dashboard';
+      } else {
+        window.location.hash = '#dashboard';
+      }
     } catch (err) {
-      const msg = err.message || '';
-      // Supabase returns this specific message for unconfirmed emails
-      if (msg.toLowerCase().includes('email not confirmed') || msg.toLowerCase().includes('not confirmed')) {
+      if (err.unverified || (err.message && err.message.toLowerCase().includes('not verified'))) {
+        unverifiedEmailTxt.textContent = email;
         unverifiedEl.classList.remove('hidden');
 
-        // Wire up resend button
+        // Wire up resend verification
         const resendBtn = document.getElementById('btn-resend-verify');
         const resendStatus = document.getElementById('resend-status');
         resendBtn.onclick = async () => {
@@ -258,15 +336,18 @@ function renderSignIn(flashMsg = '') {
           resendBtn.disabled = true;
           try {
             await api.resendVerification(email);
-            resendStatus.classList.remove('hidden');
+            resendStatus.textContent = 'Verification email sent! Check inbox & spam.';
+            resendStatus.className = 'text-[11px] text-green-700 font-semibold block';
             resendBtn.textContent = 'Resend Verification Email';
-          } catch {
+          } catch (resendErr) {
+            resendStatus.textContent = resendErr.message || 'Failed to resend email.';
+            resendStatus.className = 'text-[11px] text-red-600 font-medium block';
             resendBtn.textContent = 'Resend Verification Email';
             resendBtn.disabled = false;
           }
         };
       } else {
-        errorEl.textContent = msg || 'Invalid email or password. Please try again.';
+        errorEl.textContent = err.message || 'Invalid email or password. Please check your credentials.';
         errorEl.classList.remove('hidden');
       }
       submitBtn.textContent = 'Sign In';
@@ -285,56 +366,89 @@ function renderSignUp() {
 
   app.innerHTML = `
     <div class="min-h-screen bg-[#F1F5F9] flex flex-col justify-center items-center p-4 text-xs font-sans">
-      <div class="max-w-sm w-full bg-white border border-gray-400 shadow-md overflow-hidden">
+      <div class="max-w-md w-full auth-card overflow-hidden">
         
-        <div class="bg-[#1F3864] text-white p-4 text-center border-b border-[#152747]">
-          <div class="inline-block bg-[#2F5597] text-white font-bold text-xs px-2.5 py-0.5 border border-white/30 tracking-widest mb-1">
+        <div class="auth-header text-white p-5 text-center border-b border-[#152747]">
+          <div class="inline-block bg-[#2F5597] text-white font-bold text-xs px-2.5 py-0.5 border border-white/30 tracking-widest mb-1.5 rounded-sm">
             LAKSHYA
           </div>
-          <h1 class="text-sm font-bold uppercase tracking-wider text-white">Create Account</h1>
-          <p class="text-[11px] text-[#D9E1F2] mt-0.5">Stage-Gate Innovation Portal Registration</p>
+          <h1 class="text-base font-bold uppercase tracking-wider text-white">Create Account</h1>
+          <p class="text-xs text-[#D9E1F2] mt-0.5">Register for Lakshya Innovation Portal</p>
         </div>
 
-        <form id="signup-form" class="p-5 space-y-3 bg-white text-gray-800">
-          <div id="signup-error" class="hidden text-red-600 text-xs p-2 bg-red-50 border border-red-200"></div>
+        <div id="signup-container" class="p-6 bg-white text-gray-800">
+          <form id="signup-form" class="space-y-3.5">
+            <div id="signup-error" class="hidden text-red-600 text-xs p-3 bg-red-50 border border-red-200 rounded"></div>
 
-          <div>
-            <label class="block font-bold text-gray-700 mb-1" for="signup-name">Full Name</label>
-            <input type="text" id="signup-name" required placeholder="e.g. Rahul Sharma" class="w-full bg-white border border-gray-400 px-2.5 py-1.5 text-xs focus:outline-none focus:border-[#1F3864]" />
-          </div>
+            <div>
+              <label class="block font-semibold text-gray-700 mb-1" for="signup-role">Account Type</label>
+              <select id="signup-role" class="auth-input">
+                <option value="admin">👑 Administrator / Executive</option>
+                <option value="user" selected>👤 Employee / Team Member</option>
+                <option value="customer">🏢 Customer / External Partner</option>
+                <option value="approver">✍️ Gate Approver</option>
+                <option value="lead">🚀 Workstream Lead</option>
+              </select>
+            </div>
 
-          <div>
-            <label class="block font-bold text-gray-700 mb-1" for="signup-email">Corporate Email Address</label>
-            <input type="email" id="signup-email" required placeholder="name@company.com" class="w-full bg-white border border-gray-400 px-2.5 py-1.5 text-xs focus:outline-none focus:border-[#1F3864]" />
-          </div>
+            <div>
+              <label class="block font-semibold text-gray-700 mb-1" for="signup-name">Full Name</label>
+              <input type="text" id="signup-name" required placeholder="e.g. Rahul Sharma" class="auth-input" />
+            </div>
 
-          <div>
-            <label class="block font-bold text-gray-700 mb-1" for="signup-pwd">Create Password <span class="text-gray-400 font-normal text-[10px]">(Min. 8 characters)</span></label>
-            <input type="password" id="signup-pwd" required minlength="8" placeholder="••••••••" class="w-full bg-white border border-gray-400 px-2.5 py-1.5 text-xs focus:outline-none focus:border-[#1F3864]" />
-          </div>
+            <div>
+              <label class="block font-semibold text-gray-700 mb-1" for="signup-email">Corporate Email Address</label>
+              <input type="email" id="signup-email" required placeholder="name@company.com" class="auth-input" />
+            </div>
 
-          <div>
-            <label class="block font-bold text-gray-700 mb-1" for="signup-confirm-pwd">Confirm Password</label>
-            <input type="password" id="signup-confirm-pwd" required minlength="8" placeholder="••••••••" class="w-full bg-white border border-gray-400 px-2.5 py-1.5 text-xs focus:outline-none focus:border-[#1F3864]" />
-          </div>
+            <div>
+              <label class="block font-semibold text-gray-700 mb-1" for="signup-pwd">
+                Password <span class="text-gray-400 font-normal text-[11px]">(Min. 8 characters)</span>
+              </label>
+              <div class="relative">
+                <input type="password" id="signup-pwd" required minlength="8" placeholder="••••••••" class="auth-input pr-10" />
+                <button type="button" id="toggle-signup-pwd" class="absolute right-2.5 top-1/2 -translate-y-1/2 p-1 text-gray-400 hover:text-gray-600 focus:outline-none">
+                  <svg class="w-4 h-4 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"/></svg>
+                </button>
+              </div>
+            </div>
 
-          <div class="pt-1">
-            <button type="submit" id="btn-signup-submit" class="w-full py-2 bg-[#1F3864] hover:bg-[#152747] text-white font-bold text-xs uppercase tracking-wider border border-[#152747] transition">
-              Create Account
-            </button>
-          </div>
+            <div>
+              <label class="block font-semibold text-gray-700 mb-1" for="signup-confirm-pwd">Confirm Password</label>
+              <div class="relative">
+                <input type="password" id="signup-confirm-pwd" required minlength="8" placeholder="••••••••" class="auth-input pr-10" />
+                <button type="button" id="toggle-signup-confirm-pwd" class="absolute right-2.5 top-1/2 -translate-y-1/2 p-1 text-gray-400 hover:text-gray-600 focus:outline-none">
+                  <svg class="w-4 h-4 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"/></svg>
+                </button>
+              </div>
+            </div>
 
-          <div class="text-center pt-2 border-t border-gray-200 text-xs">
-            <a href="#signin" class="text-[#1F3864] font-semibold hover:underline">Already have an account? Sign In</a>
-          </div>
-        </form>
+            <div class="pt-2">
+              <button type="submit" id="btn-signup-submit" class="auth-btn-primary">
+                Create Account
+              </button>
+            </div>
 
+            <div class="text-center pt-3 border-t border-gray-200 text-xs text-gray-600">
+              Already have an account? 
+              <a href="#signin" class="text-[#1F3864] font-bold hover:underline ml-1">Sign In</a>
+            </div>
+          </form>
+        </div>
+
+      </div>
+      <div class="text-center mt-4 text-gray-500 text-[11px]">
+        Lakshya Innovation &amp; Operational Excellence System
       </div>
     </div>
   `;
 
+  attachPasswordToggle('signup-pwd', 'toggle-signup-pwd');
+  attachPasswordToggle('signup-confirm-pwd', 'toggle-signup-confirm-pwd');
+
   document.getElementById('signup-form').addEventListener('submit', async (e) => {
     e.preventDefault();
+    const role = document.getElementById('signup-role').value;
     const name = document.getElementById('signup-name').value.trim();
     const email = document.getElementById('signup-email').value.trim();
     const password = document.getElementById('signup-pwd').value;
@@ -345,7 +459,7 @@ function renderSignUp() {
     errorEl.classList.add('hidden');
 
     if (password !== confirmPwd) {
-      errorEl.textContent = 'Passwords do not match.';
+      errorEl.textContent = 'Passwords do not match. Please verify your confirmation password.';
       errorEl.classList.remove('hidden');
       return;
     }
@@ -356,24 +470,70 @@ function renderSignUp() {
       return;
     }
 
-    submitBtn.textContent = 'Creating account...';
+    submitBtn.textContent = 'Creating account & sending email...';
     submitBtn.disabled = true;
 
     try {
-      await api.signUp(email, password, name);
-      // Show email verification pending notice — do NOT redirect to dashboard.
-      // User must confirm their email before they can sign in.
-      const form = document.getElementById('signup-form');
-      form.innerHTML = `
-        <div class="bg-green-50 border border-green-300 text-green-800 p-3 text-xs">
-          <p class="font-bold mb-1">✔ Account created — verification email sent</p>
-          <p>We've sent a confirmation link to <strong>${email}</strong>.</p>
-          <p class="mt-1">Please check your inbox (and spam folder) and click the link to activate your account before signing in.</p>
-        </div>
-        <div class="pt-3 text-center text-xs border-t border-gray-200">
-          <a href="#signin" class="text-[#1F3864] font-semibold hover:underline">Back to Sign In</a>
+      await api.signUp(email, password, name, role);
+
+      // Render dedicated success view
+      const container = document.getElementById('signup-container');
+      container.innerHTML = `
+        <div class="text-center py-4 space-y-4">
+          <div class="w-14 h-14 bg-green-100 text-green-600 rounded-full flex items-center justify-center mx-auto text-2xl animate-check shadow-inner">
+            ✉️
+          </div>
+          <div>
+            <h2 class="text-base font-bold text-gray-800">Verification Email Sent!</h2>
+            <p class="text-xs text-gray-600 mt-1">
+              We've dispatched a confirmation link to:
+            </p>
+            <div class="mt-2 bg-[#F1F5F9] border border-gray-300 py-1.5 px-3 rounded font-mono font-bold text-[#1F3864] text-xs inline-block">
+              ${email}
+            </div>
+          </div>
+          
+          <div class="bg-blue-50 border border-blue-200 text-blue-900 p-3 rounded text-left text-xs leading-relaxed">
+            <p class="font-bold mb-1">What to do next:</p>
+            <ol class="list-decimal list-inside space-y-1 text-gray-700">
+              <li>Check your inbox for an email from <strong>Lakshya Portal</strong>.</li>
+              <li>Click the <strong>Verify Email Address</strong> button inside.</li>
+              <li>Return to sign in to access your dashboard.</li>
+            </ol>
+            <p class="text-[11px] text-gray-500 mt-2">Check your Spam / Junk folder if not received in 1-2 minutes.</p>
+          </div>
+
+          <div class="pt-2 flex flex-col sm:flex-row items-center justify-center gap-2">
+            <button id="btn-signup-resend" class="w-full sm:w-auto px-4 py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 border border-gray-300 font-semibold text-xs rounded transition">
+              Resend Email
+            </button>
+            <a href="#signin" class="w-full sm:w-auto px-5 py-2 bg-[#1F3864] hover:bg-[#152747] text-white font-bold text-xs rounded text-center transition">
+              Proceed to Sign In
+            </a>
+          </div>
+          <div id="signup-resend-status" class="text-xs text-green-700 font-medium hidden"></div>
         </div>
       `;
+
+      const resendBtn = document.getElementById('btn-signup-resend');
+      const resendStatus = document.getElementById('signup-resend-status');
+      resendBtn.onclick = async () => {
+        resendBtn.textContent = 'Sending...';
+        resendBtn.disabled = true;
+        try {
+          await api.resendVerification(email);
+          resendStatus.textContent = 'Fresh verification email dispatched successfully!';
+          resendStatus.classList.remove('hidden');
+          resendBtn.textContent = 'Resend Email';
+        } catch (resendErr) {
+          resendStatus.textContent = resendErr.message || 'Failed to resend email.';
+          resendStatus.className = 'text-xs text-red-600 font-medium';
+          resendStatus.classList.remove('hidden');
+          resendBtn.textContent = 'Resend Email';
+          resendBtn.disabled = false;
+        }
+      };
+
     } catch (err) {
       errorEl.textContent = err.message || 'Error creating account. Please try again.';
       errorEl.classList.remove('hidden');
@@ -384,7 +544,176 @@ function renderSignUp() {
 }
 
 // ==========================================
-// 3. FORGOT PASSWORD PAGE (#forgot-password)
+// 3. EMAIL VERIFICATION PAGE (#verify)
+// ==========================================
+
+async function renderVerifyEmail(tokenParam = null) {
+  document.title = "Verify Email — Lakshya Innovation Portal";
+  const app = document.getElementById('app');
+
+  // Extract token from param or URL hash / search
+  let token = tokenParam;
+  if (!token) {
+    const hashPart = window.location.hash.split('?')[1] || '';
+    const searchPart = window.location.search.replace('?', '') || '';
+    const params = new URLSearchParams(hashPart || searchPart);
+    token = params.get('token');
+  }
+
+  app.innerHTML = `
+    <div class="min-h-screen bg-[#F1F5F9] flex flex-col justify-center items-center p-4 text-xs font-sans">
+      <div class="max-w-md w-full auth-card overflow-hidden">
+        
+        <div class="auth-header text-white p-5 text-center border-b border-[#152747]">
+          <div class="inline-block bg-[#2F5597] text-white font-bold text-xs px-2.5 py-0.5 border border-white/30 tracking-widest mb-1.5 rounded-sm">
+            LAKSHYA
+          </div>
+          <h1 class="text-base font-bold uppercase tracking-wider text-white">Email Verification</h1>
+          <p class="text-xs text-[#D9E1F2] mt-0.5">Account Activation</p>
+        </div>
+
+        <div id="verify-content" class="p-6 bg-white text-gray-800 text-center">
+          ${token ? `
+            <div class="py-8 space-y-3">
+              <div class="inline-block w-8 h-8 border-4 border-[#1F3864] border-t-transparent rounded-full animate-spin"></div>
+              <p class="font-bold text-gray-700 text-sm">Verifying your email address...</p>
+              <p class="text-gray-500 text-xs">Please wait while we confirm your credentials.</p>
+            </div>
+          ` : `
+            <div class="space-y-4 py-2">
+              <p class="text-gray-700">Need a verification link? Enter your registered email address below:</p>
+              <form id="manual-verify-form" class="space-y-3">
+                <input type="email" id="manual-verify-email" required placeholder="name@company.com" class="auth-input text-left" />
+                <button type="submit" id="btn-manual-verify" class="auth-btn-primary">
+                  Send Verification Link
+                </button>
+              </form>
+              <div id="manual-verify-msg" class="hidden text-xs p-2.5 rounded"></div>
+              <div class="pt-2 border-t border-gray-200">
+                <a href="#signin" class="text-[#1F3864] font-semibold hover:underline">Back to Sign In</a>
+              </div>
+            </div>
+          `}
+        </div>
+
+      </div>
+      <div class="text-center mt-4 text-gray-500 text-[11px]">
+        Lakshya Innovation &amp; Operational Excellence System
+      </div>
+    </div>
+  `;
+
+  if (token) {
+    const content = document.getElementById('verify-content');
+    try {
+      const res = await api.verifyEmail(token);
+      await refreshActiveUser();
+
+      content.innerHTML = `
+        <div class="py-4 space-y-4">
+          <div class="w-16 h-16 bg-green-100 text-green-600 rounded-full flex items-center justify-center mx-auto text-3xl animate-check shadow-sm">
+            ✔
+          </div>
+          <div>
+            <h2 class="text-lg font-bold text-gray-800">Email Verified Successfully!</h2>
+            <p class="text-xs text-gray-600 mt-1">
+              Your account (${res.user?.email || 'Verified User'}) is now active.
+            </p>
+          </div>
+          <div class="bg-green-50 border border-green-200 text-green-800 p-3 rounded text-xs">
+            You have full access to the Stage-Gate Pipeline &amp; Innovation Portal.
+          </div>
+          <div class="pt-2">
+            <a href="#dashboard" class="inline-block w-full py-2.5 bg-[#1F3864] hover:bg-[#152747] text-white font-bold text-xs uppercase tracking-wider rounded transition">
+              Go to Dashboard
+            </a>
+          </div>
+        </div>
+      `;
+    } catch (err) {
+      content.innerHTML = `
+        <div class="py-4 space-y-4">
+          <div class="w-16 h-16 bg-red-100 text-red-600 rounded-full flex items-center justify-center mx-auto text-3xl shadow-sm">
+            ✕
+          </div>
+          <div>
+            <h2 class="text-base font-bold text-red-700">Verification Link Invalid or Expired</h2>
+            <p class="text-xs text-gray-600 mt-1">
+              ${err.message || 'This confirmation link has expired or is invalid.'}
+            </p>
+          </div>
+          
+          <div class="bg-gray-50 border border-gray-300 p-3.5 rounded text-left space-y-2 text-xs">
+            <p class="font-bold text-gray-700">Request a new verification link:</p>
+            <form id="retry-verify-form" class="space-y-2">
+              <input type="email" id="retry-verify-email" required placeholder="name@company.com" class="auth-input" />
+              <button type="submit" id="btn-retry-verify" class="w-full py-2 bg-[#1F3864] hover:bg-[#152747] text-white font-semibold text-xs rounded transition">
+                Send New Verification Email
+              </button>
+            </form>
+            <div id="retry-status" class="hidden text-xs p-2 rounded"></div>
+          </div>
+
+          <div class="pt-2 border-t border-gray-200">
+            <a href="#signin" class="text-[#1F3864] font-semibold hover:underline">Back to Sign In</a>
+          </div>
+        </div>
+      `;
+
+      const retryForm = document.getElementById('retry-verify-form');
+      if (retryForm) {
+        retryForm.addEventListener('submit', async (e) => {
+          e.preventDefault();
+          const email = document.getElementById('retry-verify-email').value.trim();
+          const statusEl = document.getElementById('retry-status');
+          const btn = document.getElementById('btn-retry-verify');
+          btn.textContent = 'Sending...';
+          btn.disabled = true;
+
+          try {
+            await api.resendVerification(email);
+            statusEl.textContent = 'Fresh verification email dispatched! Please check your inbox.';
+            statusEl.className = 'bg-green-50 border border-green-200 text-green-800 text-xs p-2.5 rounded block';
+            btn.textContent = 'Email Sent';
+          } catch (retryErr) {
+            statusEl.textContent = retryErr.message || 'Error resending verification email.';
+            statusEl.className = 'bg-red-50 border border-red-200 text-red-800 text-xs p-2.5 rounded block';
+            btn.textContent = 'Send New Verification Email';
+            btn.disabled = false;
+          }
+        });
+      }
+    }
+  } else {
+    // Wire up manual verify form
+    const manualForm = document.getElementById('manual-verify-form');
+    if (manualForm) {
+      manualForm.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const email = document.getElementById('manual-verify-email').value.trim();
+        const msgEl = document.getElementById('manual-verify-msg');
+        const btn = document.getElementById('btn-manual-verify');
+        btn.textContent = 'Sending...';
+        btn.disabled = true;
+
+        try {
+          await api.resendVerification(email);
+          msgEl.textContent = 'Verification email dispatched! Please check your inbox.';
+          msgEl.className = 'bg-green-50 border border-green-200 text-green-800 text-xs p-2.5 rounded block text-left';
+          btn.textContent = 'Email Sent';
+        } catch (mErr) {
+          msgEl.textContent = mErr.message || 'Error sending verification email.';
+          msgEl.className = 'bg-red-50 border border-red-200 text-red-800 text-xs p-2.5 rounded block text-left';
+          btn.textContent = 'Send Verification Link';
+          btn.disabled = false;
+        }
+      });
+    }
+  }
+}
+
+// ==========================================
+// 4. FORGOT PASSWORD PAGE (#forgot-password)
 // ==========================================
 
 function renderForgotPassword() {
@@ -393,35 +722,39 @@ function renderForgotPassword() {
 
   app.innerHTML = `
     <div class="min-h-screen bg-[#F1F5F9] flex flex-col justify-center items-center p-4 text-xs font-sans">
-      <div class="max-w-sm w-full bg-white border border-gray-400 shadow-md overflow-hidden">
+      <div class="max-w-md w-full auth-card overflow-hidden">
         
-        <div class="bg-[#1F3864] text-white p-4 text-center border-b border-[#152747]">
-          <div class="inline-block bg-[#2F5597] text-white font-bold text-xs px-2.5 py-0.5 border border-white/30 tracking-widest mb-1">
+        <div class="auth-header text-white p-5 text-center border-b border-[#152747]">
+          <div class="inline-block bg-[#2F5597] text-white font-bold text-xs px-2.5 py-0.5 border border-white/30 tracking-widest mb-1.5 rounded-sm">
             LAKSHYA
           </div>
-          <h1 class="text-sm font-bold uppercase tracking-wider text-white">Reset Password</h1>
-          <p class="text-[11px] text-[#D9E1F2] mt-0.5">Password Recovery</p>
+          <h1 class="text-base font-bold uppercase tracking-wider text-white">Reset Password</h1>
+          <p class="text-xs text-[#D9E1F2] mt-0.5">Password Recovery Service</p>
         </div>
 
-        <form id="forgot-form" class="p-5 space-y-3 bg-white text-gray-800">
-          <div id="forgot-message" class="hidden p-2 text-xs"></div>
+        <form id="forgot-form" class="p-6 space-y-4 bg-white text-gray-800">
+          <div id="forgot-message" class="hidden p-3 rounded text-xs"></div>
 
           <div>
-            <label class="block font-bold text-gray-700 mb-1" for="forgot-email">Corporate Email Address</label>
-            <input type="email" id="forgot-email" required placeholder="name@company.com" class="w-full bg-white border border-gray-400 px-2.5 py-1.5 text-xs focus:outline-none focus:border-[#1F3864]" />
+            <label class="block font-semibold text-gray-700 mb-1" for="forgot-email">Corporate Email Address</label>
+            <input type="email" id="forgot-email" required placeholder="name@company.com" class="auth-input" />
+            <p class="text-[11px] text-gray-500 mt-1">We will send a password reset link to this email address.</p>
           </div>
 
           <div class="pt-1">
-            <button type="submit" id="btn-forgot-submit" class="w-full py-2 bg-[#1F3864] hover:bg-[#152747] text-white font-bold text-xs uppercase tracking-wider border border-[#152747] transition">
+            <button type="submit" id="btn-forgot-submit" class="auth-btn-primary">
               Send Reset Link
             </button>
           </div>
 
-          <div class="text-center pt-2 border-t border-gray-200 text-xs">
-            <a href="#signin" class="text-[#1F3864] font-semibold hover:underline">&lt; Back to Sign In</a>
+          <div class="text-center pt-3 border-t border-gray-200 text-xs">
+            <a href="#signin" class="text-[#1F3864] font-bold hover:underline">&larr; Back to Sign In</a>
           </div>
         </form>
 
+      </div>
+      <div class="text-center mt-4 text-gray-500 text-[11px]">
+        Lakshya Innovation &amp; Operational Excellence System
       </div>
     </div>
   `;
@@ -437,18 +770,139 @@ function renderForgotPassword() {
     submitBtn.disabled = true;
 
     try {
-      await api.resetPassword(email);
-      msgEl.textContent = 'Password reset link has been sent to your email address.';
-      msgEl.className = 'bg-green-50 border border-green-300 text-green-800 p-2 text-xs block';
+      await api.forgotPassword(email);
+      msgEl.textContent = 'If an account exists with this email, a password reset link has been dispatched. Please check your inbox and spam folder.';
+      msgEl.className = 'bg-green-50 border border-green-300 text-green-800 p-3 rounded text-xs block leading-relaxed';
       submitBtn.textContent = 'Link Sent';
     } catch (err) {
       msgEl.textContent = err.message || 'Error sending password reset email.';
-      msgEl.className = 'bg-red-50 border border-red-300 text-red-800 p-2 text-xs block';
+      msgEl.className = 'bg-red-50 border border-red-300 text-red-800 p-3 rounded text-xs block';
       submitBtn.textContent = 'Send Reset Link';
       submitBtn.disabled = false;
     }
   });
 }
+
+// ==========================================
+// 5. RESET PASSWORD PAGE (#reset-password)
+// ==========================================
+
+function renderResetPassword(tokenParam = null) {
+  document.title = "Choose New Password — Lakshya Innovation Portal";
+  const app = document.getElementById('app');
+
+  let token = tokenParam;
+  if (!token) {
+    const hashPart = window.location.hash.split('?')[1] || '';
+    const searchPart = window.location.search.replace('?', '') || '';
+    const params = new URLSearchParams(hashPart || searchPart);
+    token = params.get('token');
+  }
+
+  if (!token) {
+    app.innerHTML = `
+      <div class="min-h-screen bg-[#F1F5F9] flex flex-col justify-center items-center p-4 text-xs font-sans">
+        <div class="max-w-md w-full auth-card overflow-hidden p-6 text-center">
+          <h2 class="text-base font-bold text-red-700">Missing Reset Token</h2>
+          <p class="text-gray-600 mt-2 mb-4">No password reset token was provided in the link.</p>
+          <a href="#forgot-password" class="auth-btn-primary inline-block">Request New Reset Link</a>
+        </div>
+      </div>
+    `;
+    return;
+  }
+
+  app.innerHTML = `
+    <div class="min-h-screen bg-[#F1F5F9] flex flex-col justify-center items-center p-4 text-xs font-sans">
+      <div class="max-w-md w-full auth-card overflow-hidden">
+        
+        <div class="auth-header text-white p-5 text-center border-b border-[#152747]">
+          <div class="inline-block bg-[#2F5597] text-white font-bold text-xs px-2.5 py-0.5 border border-white/30 tracking-widest mb-1.5 rounded-sm">
+            LAKSHYA
+          </div>
+          <h1 class="text-base font-bold uppercase tracking-wider text-white">Create New Password</h1>
+          <p class="text-xs text-[#D9E1F2] mt-0.5">Password Recovery</p>
+        </div>
+
+        <form id="reset-pwd-form" class="p-6 space-y-4 bg-white text-gray-800">
+          <div id="reset-error" class="hidden text-red-600 text-xs p-3 bg-red-50 border border-red-200 rounded"></div>
+
+          <div>
+            <label class="block font-semibold text-gray-700 mb-1" for="new-pwd">
+              New Password <span class="text-gray-400 font-normal text-[11px]">(Min. 8 characters)</span>
+            </label>
+            <div class="relative">
+              <input type="password" id="new-pwd" required minlength="8" placeholder="••••••••" class="auth-input pr-10" />
+              <button type="button" id="toggle-new-pwd" class="absolute right-2.5 top-1/2 -translate-y-1/2 p-1 text-gray-400 hover:text-gray-600 focus:outline-none">
+                <svg class="w-4 h-4 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"/></svg>
+              </button>
+            </div>
+          </div>
+
+          <div>
+            <label class="block font-semibold text-gray-700 mb-1" for="confirm-new-pwd">Confirm New Password</label>
+            <div class="relative">
+              <input type="password" id="confirm-new-pwd" required minlength="8" placeholder="••••••••" class="auth-input pr-10" />
+              <button type="button" id="toggle-confirm-new-pwd" class="absolute right-2.5 top-1/2 -translate-y-1/2 p-1 text-gray-400 hover:text-gray-600 focus:outline-none">
+                <svg class="w-4 h-4 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"/></svg>
+              </button>
+            </div>
+          </div>
+
+          <div class="pt-2">
+            <button type="submit" id="btn-reset-submit" class="auth-btn-primary">
+              Update Password
+            </button>
+          </div>
+
+          <div class="text-center pt-3 border-t border-gray-200 text-xs">
+            <a href="#signin" class="text-[#1F3864] font-bold hover:underline">&larr; Back to Sign In</a>
+          </div>
+        </form>
+
+      </div>
+    </div>
+  `;
+
+  attachPasswordToggle('new-pwd', 'toggle-new-pwd');
+  attachPasswordToggle('confirm-new-pwd', 'toggle-confirm-new-pwd');
+
+  document.getElementById('reset-pwd-form').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const newPwd = document.getElementById('new-pwd').value;
+    const confirmPwd = document.getElementById('confirm-new-pwd').value;
+    const errorEl = document.getElementById('reset-error');
+    const submitBtn = document.getElementById('btn-reset-submit');
+
+    errorEl.classList.add('hidden');
+
+    if (newPwd !== confirmPwd) {
+      errorEl.textContent = 'Passwords do not match.';
+      errorEl.classList.remove('hidden');
+      return;
+    }
+
+    if (newPwd.length < 8) {
+      errorEl.textContent = 'Password must be at least 8 characters long.';
+      errorEl.classList.remove('hidden');
+      return;
+    }
+
+    submitBtn.textContent = 'Updating password...';
+    submitBtn.disabled = true;
+
+    try {
+      await api.resetPassword(token, newPwd);
+      renderSignIn('Your password has been updated successfully! Please sign in with your new password.');
+    } catch (err) {
+      errorEl.textContent = err.message || 'Error updating password.';
+      errorEl.classList.remove('hidden');
+      submitBtn.textContent = 'Update Password';
+      submitBtn.disabled = false;
+    }
+  });
+}
+
 
 // ==========================================
 // 4. MAIN DASHBOARD PAGE (#dashboard)
@@ -734,7 +1188,7 @@ async function renderAdminConsole() {
     return;
   }
 
-  document.title = "All Projects (Admin Console) — Lakshya";
+  document.title = "Executive Admin Console — Lakshya Innovation Portal";
   window.location.hash = '#admin';
   const app = document.getElementById('app');
 
@@ -742,208 +1196,534 @@ async function renderAdminConsole() {
     ${getTopNavHtml('admin')}
     <main class="p-4 max-w-[1440px] mx-auto text-gray-800">
       <div class="p-8 text-center text-gray-500 font-sans text-xs">
-        Loading company-wide initiatives from all employees...
+        <div class="inline-block w-6 h-6 border-2 border-[#1F3864] border-t-transparent rounded-full animate-spin mb-2"></div>
+        <p>Loading enterprise administrative console...</p>
       </div>
     </main>
   `;
   bindNavEvents();
 
   let projects = [];
+  let users = [];
+  let summary = { stageCounts: [], analytics: {} };
+
   try {
-    projects = await api.getProjects();
+    const [pList, uList, dSum] = await Promise.all([
+      api.getProjects().catch(() => []),
+      api.getUsers().catch(() => []),
+      api.getDashboardSummary().catch(() => ({ stageCounts: [], analytics: {} }))
+    ]);
+    projects = pList;
+    users = uList;
+    summary = dSum;
   } catch (err) {
-    showToast('Error loading company projects: ' + err.message, 'error');
+    showToast('Error loading administrative data: ' + err.message, 'error');
   }
 
   const uniqueOwners = [...new Set(projects.map(p => p.suggester_name || p.suggester_email).filter(Boolean))].sort();
+  const verifiedCount = users.filter(u => u.email_verified).length;
+  const unverifiedCount = users.length - verifiedCount;
 
-  app.innerHTML = `
-    ${getTopNavHtml('admin')}
-    
-    <main class="p-3 md:p-4 max-w-[1440px] mx-auto text-gray-900">
+  let currentAdminTab = 'projects'; // 'projects' | 'users' | 'analytics'
+
+  function renderAdminView() {
+    app.innerHTML = `
+      ${getTopNavHtml('admin')}
       
-      <!-- Top Title -->
-      <div class="flex flex-wrap items-center justify-between gap-2 mb-3 pb-2 border-b border-gray-300">
-        <div>
-          <div class="flex items-center gap-2">
-            <h1 class="text-base font-bold text-[#1F3864] uppercase tracking-tight">COMPANY-WIDE INITIATIVES (ADMIN CONSOLE)</h1>
-            <span class="text-[11px] px-2 py-0.5 font-bold bg-[#1F3864] text-white uppercase">Full Administrative View</span>
-          </div>
-          <p class="text-xs text-gray-500 mt-0.5">Comprehensive view of all stage-gate projects submitted across every department and employee.</p>
-        </div>
-        <div class="text-xs font-mono bg-[#F8FAFC] border border-gray-300 px-3 py-1.5">
-          <span>Total Database Records: <strong class="text-[#1F3864] font-bold">${projects.length}</strong></span>
-        </div>
-      </div>
-
-      <!-- Toolbar -->
-      <div class="bg-[#F1F5F9] border border-gray-300 p-2 mb-2.5 flex flex-wrap items-center justify-between gap-2 text-xs">
-        <div class="flex flex-wrap items-center gap-2">
-          <div class="flex items-center gap-1.5">
-            <label class="font-semibold text-gray-700 whitespace-nowrap">Search:</label>
-            <input id="admin-search" type="text" placeholder="Title, ID, Suggester..." class="bg-white border border-gray-300 px-2 py-1 w-48 sm:w-60 text-xs focus:outline-none focus:border-[#1F3864]" />
+      <main class="p-3 md:p-4 max-w-[1440px] mx-auto text-gray-900">
+        
+        <!-- Header & Executive Stats -->
+        <div class="flex flex-wrap items-center justify-between gap-3 mb-3 pb-3 border-b border-gray-300">
+          <div>
+            <div class="flex items-center gap-2">
+              <h1 class="text-base font-bold text-[#1F3864] uppercase tracking-tight">EXECUTIVE ADMIN MANAGEMENT CENTER</h1>
+              <span class="text-[10px] px-2 py-0.5 font-bold bg-[#1F3864] text-white uppercase rounded-sm">Enterprise Super Admin</span>
+            </div>
+            <p class="text-xs text-gray-500 mt-0.5">Central control for all stage-gate initiatives, user roles, email verifications, and company-wide performance.</p>
           </div>
 
-          <div class="flex items-center gap-1.5">
-            <label class="font-semibold text-gray-700 whitespace-nowrap">Filter by Owner (Employee):</label>
-            <select id="admin-owner-filter" class="bg-white border border-gray-300 px-2 py-1 text-xs focus:outline-none focus:border-[#1F3864]">
-              <option value="ALL">All Employees (${uniqueOwners.length})</option>
-              ${uniqueOwners.map(owner => `<option value="${owner}">${owner}</option>`).join('')}
-            </select>
-          </div>
-
-          <div class="flex items-center gap-1.5">
-            <label class="font-semibold text-gray-700 whitespace-nowrap">Stage:</label>
-            <select id="admin-stage-filter" class="bg-white border border-gray-300 px-2 py-1 text-xs focus:outline-none focus:border-[#1F3864]">
-              <option value="ALL">All Stages</option>
-              <option value="D0">D0 Validation</option>
-              <option value="D1">D1 Score Matrix</option>
-              <option value="D2">D2 Sign-Off</option>
-              <option value="D3">D3 Implementation</option>
-              <option value="D4">D4 Completed</option>
-            </select>
-          </div>
-
-          <div class="flex items-center gap-1.5">
-            <label class="font-semibold text-gray-700 whitespace-nowrap">Workstream:</label>
-            <select id="admin-workstream-filter" class="bg-white border border-gray-300 px-2 py-1 text-xs focus:outline-none focus:border-[#1F3864]">
-              <option value="ALL">All Workstreams</option>
-              <option value="Operations">Operations</option>
-              <option value="Maintenance">Maintenance</option>
-              <option value="Production">Production</option>
-              <option value="Engineering">Engineering</option>
-              <option value="Procurement">Procurement</option>
-              <option value="Quality">Quality</option>
-            </select>
+          <div class="flex flex-wrap items-center gap-2 font-mono text-xs">
+            <div class="bg-white border border-gray-300 px-3 py-1.5 shadow-sm">
+              <span class="text-gray-500">Initiatives:</span> <strong class="text-[#1F3864] font-bold text-sm">${projects.length}</strong>
+            </div>
+            <div class="bg-white border border-gray-300 px-3 py-1.5 shadow-sm">
+              <span class="text-gray-500">Total Users:</span> <strong class="text-[#1F3864] font-bold text-sm">${users.length}</strong>
+            </div>
+            <div class="bg-white border border-green-300 px-3 py-1.5 shadow-sm">
+              <span class="text-green-700">Verified:</span> <strong class="text-green-700 font-bold text-sm">${verifiedCount}</strong>
+            </div>
+            <div class="bg-white border border-amber-300 px-3 py-1.5 shadow-sm">
+              <span class="text-amber-700">Unverified:</span> <strong class="text-amber-700 font-bold text-sm">${unverifiedCount}</strong>
+            </div>
           </div>
         </div>
 
-        <button id="btn-admin-new-idea" class="px-3 py-1 bg-[#1F3864] hover:bg-[#152747] text-white font-semibold text-xs border border-[#152747] transition">
-          + New Idea
-        </button>
-      </div>
+        <!-- Admin Navigation Tabs -->
+        <div class="flex items-center gap-2 mb-3 border-b border-gray-300 text-xs font-semibold">
+          <button id="admin-tab-projects" class="px-4 py-2 border-b-2 transition ${currentAdminTab === 'projects' ? 'border-[#1F3864] text-[#1F3864] bg-white font-bold' : 'border-transparent text-gray-500 hover:text-gray-800 bg-gray-50'}">
+            📁 Company Initiatives (${projects.length})
+          </button>
+          <button id="admin-tab-users" class="px-4 py-2 border-b-2 transition ${currentAdminTab === 'users' ? 'border-[#1F3864] text-[#1F3864] bg-white font-bold' : 'border-transparent text-gray-500 hover:text-gray-800 bg-gray-50'}">
+            👥 User &amp; Access Control (${users.length})
+          </button>
+        </div>
 
-      <!-- Admin Data Table -->
-      <div class="border border-gray-300 bg-white overflow-x-auto">
-        <table class="excel-table w-full">
-          <thead>
-            <tr class="bg-[#1F3864] text-white">
-              <th class="py-1.5 px-2.5 font-bold text-xs text-white border-r border-[#2F5597] w-16 text-center">ID</th>
-              <th class="py-1.5 px-2.5 font-bold text-xs text-white border-r border-[#2F5597]">Title / Description</th>
-              <th class="py-1.5 px-2.5 font-bold text-xs text-white border-r border-[#2F5597] w-24 text-center">Stage</th>
-              <th class="py-1.5 px-2.5 font-bold text-xs text-white border-r border-[#2F5597] w-40">Owner Name / Email</th>
-              <th class="py-1.5 px-2.5 font-bold text-xs text-white border-r border-[#2F5597] w-28">Work Stream</th>
-              <th class="py-1.5 px-2.5 font-bold text-xs text-white border-r border-[#2F5597] w-32">EBITDA Category</th>
-              <th class="py-1.5 px-2.5 font-bold text-xs text-white border-r border-[#2F5597] w-28">Last Updated</th>
-              <th class="py-1.5 px-2.5 font-bold text-xs text-white text-center w-24">Actions</th>
-            </tr>
-          </thead>
-          <tbody id="admin-tbody" class="font-sans text-xs">
-            <!-- Populated via renderAdminRows() -->
-          </tbody>
-        </table>
-      </div>
+        <!-- TAB 1: ALL PROJECTS -->
+        <div id="admin-view-projects" class="${currentAdminTab === 'projects' ? 'block' : 'hidden'}">
+          <!-- Toolbar -->
+          <div class="bg-[#F1F5F9] border border-gray-300 p-2.5 mb-2.5 flex flex-wrap items-center justify-between gap-2 text-xs">
+            <div class="flex flex-wrap items-center gap-2">
+              <div class="flex items-center gap-1.5">
+                <label class="font-semibold text-gray-700">Search:</label>
+                <input id="admin-search" type="text" placeholder="Title, ID, Suggester..." class="bg-white border border-gray-300 px-2 py-1 w-48 sm:w-56 text-xs focus:outline-none focus:border-[#1F3864]" />
+              </div>
 
-      <div class="flex items-center justify-between text-xs text-gray-500 mt-2">
-        <span id="admin-count-label">Showing all projects</span>
-        <span>Administrator privilege: Direct view and gate edit permissions for all records</span>
-      </div>
+              <div class="flex items-center gap-1.5">
+                <label class="font-semibold text-gray-700">Owner:</label>
+                <select id="admin-owner-filter" class="bg-white border border-gray-300 px-2 py-1 text-xs focus:outline-none focus:border-[#1F3864]">
+                  <option value="ALL">All Employees (${uniqueOwners.length})</option>
+                  ${uniqueOwners.map(owner => `<option value="${owner}">${owner}</option>`).join('')}
+                </select>
+              </div>
 
-    </main>
-  `;
+              <div class="flex items-center gap-1.5">
+                <label class="font-semibold text-gray-700">Stage:</label>
+                <select id="admin-stage-filter" class="bg-white border border-gray-300 px-2 py-1 text-xs focus:outline-none focus:border-[#1F3864]">
+                  <option value="ALL">All Stages</option>
+                  <option value="D0">D0 Validation</option>
+                  <option value="D1">D1 Score Matrix</option>
+                  <option value="D2">D2 Sign-Off</option>
+                  <option value="D3">D3 Implementation</option>
+                  <option value="D4">D4 Completed</option>
+                </select>
+              </div>
 
-  bindNavEvents();
-  document.getElementById('btn-admin-new-idea').addEventListener('click', () => showNewIdeaModal());
+              <div class="flex items-center gap-1.5">
+                <label class="font-semibold text-gray-700">Workstream:</label>
+                <select id="admin-workstream-filter" class="bg-white border border-gray-300 px-2 py-1 text-xs focus:outline-none focus:border-[#1F3864]">
+                  <option value="ALL">All Workstreams</option>
+                  <option value="Operations">Operations</option>
+                  <option value="Maintenance">Maintenance</option>
+                  <option value="Production">Production</option>
+                  <option value="Engineering">Engineering</option>
+                  <option value="Procurement">Procurement</option>
+                  <option value="Quality">Quality</option>
+                </select>
+              </div>
+            </div>
 
-  const searchInput = document.getElementById('admin-search');
-  const ownerFilter = document.getElementById('admin-owner-filter');
-  const stageFilter = document.getElementById('admin-stage-filter');
-  const workstreamFilter = document.getElementById('admin-workstream-filter');
-  const tbody = document.getElementById('admin-tbody');
-  const countLabel = document.getElementById('admin-count-label');
+            <button id="btn-admin-new-idea" class="px-3.5 py-1.5 bg-[#1F3864] hover:bg-[#152747] text-white font-semibold text-xs border border-[#152747] transition">
+              + New Initiative
+            </button>
+          </div>
 
-  function renderAdminRows() {
-    const q = searchInput.value.toLowerCase().trim();
-    const owner = ownerFilter.value;
-    const stage = stageFilter.value;
-    const workstream = workstreamFilter.value;
+          <!-- Table -->
+          <div class="border border-gray-300 bg-white overflow-x-auto shadow-sm">
+            <table class="excel-table w-full">
+              <thead>
+                <tr class="bg-[#1F3864] text-white">
+                  <th class="py-2 px-2.5 font-bold text-xs text-white border-r border-[#2F5597] w-16 text-center">ID</th>
+                  <th class="py-2 px-2.5 font-bold text-xs text-white border-r border-[#2F5597]">Title / Description</th>
+                  <th class="py-2 px-2.5 font-bold text-xs text-white border-r border-[#2F5597] w-24 text-center">Stage</th>
+                  <th class="py-2 px-2.5 font-bold text-xs text-white border-r border-[#2F5597] w-48">Owner / Suggester</th>
+                  <th class="py-2 px-2.5 font-bold text-xs text-white border-r border-[#2F5597] w-28">Workstream</th>
+                  <th class="py-2 px-2.5 font-bold text-xs text-white border-r border-[#2F5597] w-32">EBITDA Category</th>
+                  <th class="py-2 px-2.5 font-bold text-xs text-white border-r border-[#2F5597] w-28">Last Updated</th>
+                  <th class="py-2 px-2.5 font-bold text-xs text-white text-center w-36">Admin Actions</th>
+                </tr>
+              </thead>
+              <tbody id="admin-projects-tbody" class="font-sans text-xs"></tbody>
+            </table>
+          </div>
+          <div class="flex items-center justify-between text-xs text-gray-500 mt-2">
+            <span id="admin-projects-count-label">Showing all projects</span>
+            <span>Admin privileges: Full access to view, edit gates, and delete records</span>
+          </div>
+        </div>
 
-    const filtered = projects.filter(p => {
-      const idStr = ('I' + (p.id || '')).toLowerCase();
-      const matchQ = !q || p.title.toLowerCase().includes(q) || idStr.includes(q) || (p.suggester_name || '').toLowerCase().includes(q) || (p.suggester_email || '').toLowerCase().includes(q);
-      const matchOwner = owner === 'ALL' || (p.suggester_name || p.suggester_email) === owner;
-      const matchStage = stage === 'ALL' || (p.current_stage || 'D0').toUpperCase() === stage;
-      const matchWorkstream = workstream === 'ALL' || (p.workstream || 'Operations').toLowerCase() === workstream.toLowerCase();
-      return matchQ && matchOwner && matchStage && matchWorkstream;
+        <!-- TAB 2: USER & ACCESS MANAGEMENT -->
+        <div id="admin-view-users" class="${currentAdminTab === 'users' ? 'block' : 'hidden'}">
+          <div class="bg-[#F1F5F9] border border-gray-300 p-2.5 mb-2.5 flex flex-wrap items-center justify-between gap-2 text-xs">
+            <div class="flex flex-wrap items-center gap-2">
+              <div class="flex items-center gap-1.5">
+                <label class="font-semibold text-gray-700">Search Users:</label>
+                <input id="admin-users-search" type="text" placeholder="Name or Email..." class="bg-white border border-gray-300 px-2 py-1 w-56 text-xs focus:outline-none focus:border-[#1F3864]" />
+              </div>
+
+              <div class="flex items-center gap-1.5">
+                <label class="font-semibold text-gray-700">Role:</label>
+                <select id="admin-users-role-filter" class="bg-white border border-gray-300 px-2 py-1 text-xs focus:outline-none focus:border-[#1F3864]">
+                  <option value="ALL">All Roles</option>
+                  <option value="admin">Administrator (admin)</option>
+                  <option value="member">Team Member (member)</option>
+                  <option value="user">Employee (user)</option>
+                  <option value="customer">Customer / Partner</option>
+                  <option value="approver">Gate Approver</option>
+                  <option value="lead">Workstream Lead</option>
+                </select>
+              </div>
+
+              <div class="flex items-center gap-1.5">
+                <label class="font-semibold text-gray-700">Status:</label>
+                <select id="admin-users-status-filter" class="bg-white border border-gray-300 px-2 py-1 text-xs focus:outline-none focus:border-[#1F3864]">
+                  <option value="ALL">All Verification Statuses</option>
+                  <option value="verified">Verified (Active)</option>
+                  <option value="unverified">Pending Verification</option>
+                </select>
+              </div>
+            </div>
+          </div>
+
+          <!-- Users Table -->
+          <div class="border border-gray-300 bg-white overflow-x-auto shadow-sm">
+            <table class="excel-table w-full">
+              <thead>
+                <tr class="bg-[#1F3864] text-white">
+                  <th class="py-2 px-2.5 font-bold text-xs text-white border-r border-[#2F5597] w-48">Full Name</th>
+                  <th class="py-2 px-2.5 font-bold text-xs text-white border-r border-[#2F5597] w-64">Corporate Email</th>
+                  <th class="py-2 px-2.5 font-bold text-xs text-white border-r border-[#2F5597] w-36 text-center">Assigned Role</th>
+                  <th class="py-2 px-2.5 font-bold text-xs text-white border-r border-[#2F5597] w-32 text-center">Email Verification</th>
+                  <th class="py-2 px-2.5 font-bold text-xs text-white border-r border-[#2F5597] w-24 text-center">Initiatives</th>
+                  <th class="py-2 px-2.5 font-bold text-xs text-white border-r border-[#2F5597] w-32">Joined Date</th>
+                  <th class="py-2 px-2.5 font-bold text-xs text-white text-center w-64">User Management Actions</th>
+                </tr>
+              </thead>
+              <tbody id="admin-users-tbody" class="font-sans text-xs"></tbody>
+            </table>
+          </div>
+          <div class="flex items-center justify-between text-xs text-gray-500 mt-2">
+            <span id="admin-users-count-label">Showing all users</span>
+            <span>Admins can adjust user roles, manually verify emails, or dispatch verification links.</span>
+          </div>
+        </div>
+
+      </main>
+    `;
+
+    bindNavEvents();
+
+    // Wire Tabs
+    const tabProjects = document.getElementById('admin-tab-projects');
+    const tabUsers = document.getElementById('admin-tab-users');
+    const viewProjects = document.getElementById('admin-view-projects');
+    const viewUsers = document.getElementById('admin-view-users');
+
+    tabProjects.addEventListener('click', () => {
+      currentAdminTab = 'projects';
+      tabProjects.className = 'px-4 py-2 border-b-2 border-[#1F3864] text-[#1F3864] bg-white font-bold transition';
+      tabUsers.className = 'px-4 py-2 border-b-2 border-transparent text-gray-500 hover:text-gray-800 bg-gray-50 transition';
+      viewProjects.classList.remove('hidden');
+      viewUsers.classList.add('hidden');
     });
 
-    countLabel.textContent = `Showing ${filtered.length} of ${projects.length} company initiatives`;
+    tabUsers.addEventListener('click', () => {
+      currentAdminTab = 'users';
+      tabUsers.className = 'px-4 py-2 border-b-2 border-[#1F3864] text-[#1F3864] bg-white font-bold transition';
+      tabProjects.className = 'px-4 py-2 border-b-2 border-transparent text-gray-500 hover:text-gray-800 bg-gray-50 transition';
+      viewUsers.classList.remove('hidden');
+      viewProjects.classList.add('hidden');
+      renderUsersRows();
+    });
 
-    if (filtered.length === 0) {
-      tbody.innerHTML = `
-        <tr>
-          <td colspan="8" class="text-center py-8 text-gray-500">
-            No projects found matching the selected filter criteria.
-          </td>
-        </tr>
-      `;
-      return;
+    document.getElementById('btn-admin-new-idea').addEventListener('click', () => showNewIdeaModal());
+
+    // Projects Filtering
+    const searchInput = document.getElementById('admin-search');
+    const ownerFilter = document.getElementById('admin-owner-filter');
+    const stageFilter = document.getElementById('admin-stage-filter');
+    const workstreamFilter = document.getElementById('admin-workstream-filter');
+    const projectsTbody = document.getElementById('admin-projects-tbody');
+    const projectsCountLabel = document.getElementById('admin-projects-count-label');
+
+    function renderProjectsRows() {
+      const q = searchInput.value.toLowerCase().trim();
+      const owner = ownerFilter.value;
+      const stage = stageFilter.value;
+      const workstream = workstreamFilter.value;
+
+      const filtered = projects.filter(p => {
+        const idStr = ('I' + (p.id || '')).toLowerCase();
+        const matchQ = !q || p.title.toLowerCase().includes(q) || idStr.includes(q) || (p.suggester_name || '').toLowerCase().includes(q) || (p.suggester_email || '').toLowerCase().includes(q);
+        const matchOwner = owner === 'ALL' || (p.suggester_name || p.suggester_email) === owner;
+        const matchStage = stage === 'ALL' || (p.current_stage || 'D0').toUpperCase() === stage;
+        const matchWorkstream = workstream === 'ALL' || (p.workstream || 'Operations').toLowerCase() === workstream.toLowerCase();
+        return matchQ && matchOwner && matchStage && matchWorkstream;
+      });
+
+      projectsCountLabel.textContent = `Showing ${filtered.length} of ${projects.length} company initiatives`;
+
+      if (filtered.length === 0) {
+        projectsTbody.innerHTML = `<tr><td colspan="8" class="text-center py-8 text-gray-500">No initiatives match your filters.</td></tr>`;
+        return;
+      }
+
+      const stageColors = {
+        'D0': 'bg-blue-50 text-blue-800 border-blue-300',
+        'D1': 'bg-amber-50 text-amber-800 border-amber-300',
+        'D2': 'bg-orange-50 text-orange-800 border-orange-300',
+        'D3': 'bg-indigo-50 text-indigo-800 border-indigo-300',
+        'D4': 'bg-green-50 text-green-800 border-green-300'
+      };
+
+      projectsTbody.innerHTML = filtered.map((proj, idx) => {
+        const stageUpper = (proj.current_stage || 'D0').toUpperCase();
+        const badgeStyle = stageColors[stageUpper] || 'bg-gray-100 text-gray-800 border-gray-300';
+        const updatedDate = proj.updated_at ? new Date(proj.updated_at).toLocaleDateString() : '-';
+        const rowBg = idx % 2 === 0 ? 'bg-white' : 'bg-[#F8FAFC]';
+        const shortId = typeof proj.id === 'string' && proj.id.length > 8 ? proj.id.slice(0, 8) : proj.id;
+
+        return `
+          <tr data-project-id="${proj.id}" class="${rowBg} hover:bg-[#EFF6FF] border-b border-gray-200">
+            <td class="py-1.5 px-2.5 text-center font-mono font-bold text-gray-700 border-r border-gray-200">I${shortId}</td>
+            <td class="py-1.5 px-2.5 font-semibold text-gray-900 border-r border-gray-200">
+              <div class="truncate max-w-[320px]" title="${proj.title}">${proj.title}</div>
+              ${proj.description ? `<div class="text-[11px] text-gray-500 font-normal truncate max-w-[320px]">${proj.description}</div>` : ''}
+            </td>
+            <td class="py-1.5 px-2.5 text-center border-r border-gray-200">
+              <span class="inline-block px-1.5 py-0.5 text-[11px] font-bold border ${badgeStyle}">${stageUpper}</span>
+            </td>
+            <td class="py-1.5 px-2.5 text-gray-800 border-r border-gray-200">
+              <div class="font-semibold truncate">${proj.suggester_name || 'User'}</div>
+              <div class="text-[11px] text-gray-500 font-mono truncate">${proj.suggester_email || '-'}</div>
+            </td>
+            <td class="py-1.5 px-2.5 text-gray-600 border-r border-gray-200">${proj.workstream || 'Operations'}</td>
+            <td class="py-1.5 px-2.5 text-gray-600 border-r border-gray-200">${proj.ebitda_category || 'Cost Reduction'}</td>
+            <td class="py-1.5 px-2.5 text-gray-500 font-mono border-r border-gray-200">${updatedDate}</td>
+            <td class="py-1.5 px-2.5 text-center">
+              <div class="flex items-center justify-center gap-1.5">
+                <button class="btn-view-proj px-2 py-0.5 text-xs font-semibold bg-[#1F3864] hover:bg-[#152747] text-white border border-[#152747] rounded-sm" data-id="${proj.id}">
+                  Details
+                </button>
+                <button class="btn-delete-proj px-2 py-0.5 text-xs font-semibold bg-red-50 hover:bg-red-100 text-red-700 border border-red-300 rounded-sm" data-id="${proj.id}" data-title="${proj.title}">
+                  Delete
+                </button>
+              </div>
+            </td>
+          </tr>
+        `;
+      }).join('');
+
+      // Wire View Details buttons
+      projectsTbody.querySelectorAll('.btn-view-proj').forEach(btn => {
+        btn.addEventListener('click', (e) => {
+          e.stopPropagation();
+          renderProjectDetail(btn.dataset.id);
+        });
+      });
+
+      // Wire Delete Project buttons
+      projectsTbody.querySelectorAll('.btn-delete-proj').forEach(btn => {
+        btn.addEventListener('click', (e) => {
+          e.stopPropagation();
+          const projId = btn.dataset.id;
+          const projTitle = btn.dataset.title;
+          showModal(
+            'Delete Initiative',
+            `Are you sure you want to permanently delete project "<strong>${projTitle}</strong>"? This action cannot be undone.`,
+            'Delete Project',
+            async () => {
+              try {
+                await api.deleteProject(projId);
+                showToast(`Project "${projTitle}" deleted successfully.`, 'success');
+                projects = projects.filter(p => p.id !== projId);
+                renderProjectsRows();
+              } catch (delErr) {
+                showToast('Error deleting project: ' + delErr.message, 'error');
+              }
+            }
+          );
+        });
+      });
     }
 
-    const stageColors = {
-      'D0': 'bg-blue-50 text-blue-800 border-blue-300',
-      'D1': 'bg-amber-50 text-amber-800 border-amber-300',
-      'D2': 'bg-orange-50 text-orange-800 border-orange-300',
-      'D3': 'bg-indigo-50 text-indigo-800 border-indigo-300',
-      'D4': 'bg-green-50 text-green-800 border-green-300'
-    };
+    searchInput.addEventListener('input', renderProjectsRows);
+    ownerFilter.addEventListener('change', renderProjectsRows);
+    stageFilter.addEventListener('change', renderProjectsRows);
+    workstreamFilter.addEventListener('change', renderProjectsRows);
 
-    tbody.innerHTML = filtered.map((proj, idx) => {
-      const stageUpper = (proj.current_stage || 'D0').toUpperCase();
-      const badgeStyle = stageColors[stageUpper] || 'bg-gray-100 text-gray-800 border-gray-300';
-      const updatedDate = proj.updated_at ? new Date(proj.updated_at).toLocaleDateString() : '-';
-      const rowBg = idx % 2 === 0 ? 'bg-white' : 'bg-[#F8FAFC]';
-      const shortId = typeof proj.id === 'string' && proj.id.length > 8 ? proj.id.slice(0, 8) : proj.id;
+    renderProjectsRows();
 
-      return `
-        <tr data-project-id="${proj.id}" class="${rowBg} hover:bg-[#EFF6FF] cursor-pointer border-b border-gray-200">
-          <td class="py-1.5 px-2.5 text-center font-mono font-bold text-gray-700 border-r border-gray-200">I${shortId}</td>
-          <td class="py-1.5 px-2.5 font-semibold text-gray-900 border-r border-gray-200">
-            <div class="truncate max-w-[360px]" title="${proj.title}">${proj.title}</div>
-            ${proj.description ? `<div class="text-[11px] text-gray-500 font-normal truncate max-w-[360px]">${proj.description}</div>` : ''}
-          </td>
-          <td class="py-1.5 px-2.5 text-center border-r border-gray-200">
-            <span class="inline-block px-1.5 py-0.5 text-[11px] font-bold border ${badgeStyle}">${stageUpper}</span>
-          </td>
-          <td class="py-1.5 px-2.5 text-gray-800 border-r border-gray-200">
-            <div class="font-semibold truncate">${proj.suggester_name || 'User'}</div>
-            <div class="text-[11px] text-gray-500 font-mono truncate">${proj.suggester_email || '-'}</div>
-          </td>
-          <td class="py-1.5 px-2.5 text-gray-600 border-r border-gray-200">${proj.workstream || 'Operations'}</td>
-          <td class="py-1.5 px-2.5 text-gray-600 border-r border-gray-200">${proj.ebitda_category || 'Cost Reduction'}</td>
-          <td class="py-1.5 px-2.5 text-gray-500 font-mono border-r border-gray-200">${updatedDate}</td>
-          <td class="py-1.5 px-2.5 text-center">
-            <button class="px-2 py-0.5 text-xs font-semibold bg-[#1F3864] hover:bg-[#152747] text-white border border-[#152747]">
-              View Details
-            </button>
-          </td>
-        </tr>
-      `;
-    }).join('');
+    // Users Management
+    const usersSearch = document.getElementById('admin-users-search');
+    const usersRoleFilter = document.getElementById('admin-users-role-filter');
+    const usersStatusFilter = document.getElementById('admin-users-status-filter');
+    const usersTbody = document.getElementById('admin-users-tbody');
+    const usersCountLabel = document.getElementById('admin-users-count-label');
 
-    tbody.querySelectorAll('tr[data-project-id]').forEach(row => {
-      row.addEventListener('click', () => {
-        renderProjectDetail(row.dataset.projectId);
+    function renderUsersRows() {
+      const q = usersSearch.value.toLowerCase().trim();
+      const role = usersRoleFilter.value;
+      const status = usersStatusFilter.value;
+
+      const filtered = users.filter(u => {
+        const matchQ = !q || (u.name || '').toLowerCase().includes(q) || (u.email || '').toLowerCase().includes(q);
+        const matchRole = role === 'ALL' || u.role === role;
+        const matchStatus = status === 'ALL' || (status === 'verified' ? u.email_verified : !u.email_verified);
+        return matchQ && matchRole && matchStatus;
       });
-    });
+
+      usersCountLabel.textContent = `Showing ${filtered.length} of ${users.length} registered accounts`;
+
+      if (filtered.length === 0) {
+        usersTbody.innerHTML = `<tr><td colspan="7" class="text-center py-8 text-gray-500">No user accounts found matching your filters.</td></tr>`;
+        return;
+      }
+
+      const roleBadges = {
+        admin: 'bg-purple-100 text-purple-800 border-purple-300 font-bold',
+        member: 'bg-blue-100 text-blue-800 border-blue-300 font-semibold',
+        user: 'bg-gray-100 text-gray-800 border-gray-300 font-medium',
+        customer: 'bg-emerald-100 text-emerald-800 border-emerald-300 font-semibold',
+        approver: 'bg-amber-100 text-amber-800 border-amber-300 font-bold',
+        lead: 'bg-indigo-100 text-indigo-800 border-indigo-300 font-bold',
+      };
+
+      usersTbody.innerHTML = filtered.map((u, idx) => {
+        const isSelf = activeUser && activeUser.id === u.id;
+        const roleBadge = roleBadges[u.role] || roleBadges.user;
+        const createdDate = u.created_at ? new Date(u.created_at).toLocaleDateString() : '-';
+        const isVerified = Boolean(u.email_verified);
+        const rowBg = idx % 2 === 0 ? 'bg-white' : 'bg-[#F8FAFC]';
+
+        return `
+          <tr class="${rowBg} border-b border-gray-200">
+            <td class="py-2 px-2.5 font-bold text-gray-900 border-r border-gray-200">
+              ${u.name || 'User'}
+              ${isSelf ? '<span class="ml-1 text-[10px] text-blue-600 font-normal">(You)</span>' : ''}
+            </td>
+            <td class="py-2 px-2.5 font-mono text-gray-700 border-r border-gray-200">${u.email}</td>
+            <td class="py-2 px-2.5 text-center border-r border-gray-200">
+              <select class="user-role-select text-xs font-semibold px-2 py-0.5 border rounded-sm ${roleBadge}" data-user-id="${u.id}" ${isSelf ? 'disabled title="You cannot change your own role"' : ''}>
+                <option value="admin" ${u.role === 'admin' ? 'selected' : ''}>Administrator</option>
+                <option value="member" ${u.role === 'member' ? 'selected' : ''}>Team Member</option>
+                <option value="user" ${u.role === 'user' ? 'selected' : ''}>Employee</option>
+                <option value="customer" ${u.role === 'customer' ? 'selected' : ''}>Customer / Partner</option>
+                <option value="approver" ${u.role === 'approver' ? 'selected' : ''}>Gate Approver</option>
+                <option value="lead" ${u.role === 'lead' ? 'selected' : ''}>Workstream Lead</option>
+              </select>
+            </td>
+            <td class="py-2 px-2.5 text-center border-r border-gray-200">
+              ${isVerified ? `
+                <span class="inline-flex items-center gap-1 px-2 py-0.5 text-[11px] font-semibold bg-green-50 text-green-700 border border-green-300 rounded-sm">
+                  <span>✔</span> Verified
+                </span>
+              ` : `
+                <span class="inline-flex items-center gap-1 px-2 py-0.5 text-[11px] font-semibold bg-amber-50 text-amber-800 border border-amber-300 rounded-sm">
+                  <span>⚠️</span> Pending
+                </span>
+              `}
+            </td>
+            <td class="py-2 px-2.5 text-center font-mono font-bold text-gray-700 border-r border-gray-200">
+              ${u.project_count || 0}
+            </td>
+            <td class="py-2 px-2.5 font-mono text-gray-500 border-r border-gray-200">${createdDate}</td>
+            <td class="py-2 px-2.5 text-center">
+              <div class="flex items-center justify-center gap-1.5 flex-wrap">
+                <button class="btn-toggle-verify px-2 py-1 text-[11px] font-semibold ${isVerified ? 'bg-amber-50 hover:bg-amber-100 text-amber-800 border border-amber-300' : 'bg-green-50 hover:bg-green-100 text-green-700 border border-green-300'} rounded-sm transition" data-user-id="${u.id}" data-verified="${isVerified}">
+                  ${isVerified ? 'Mark Unverified' : 'Activate &amp; Verify'}
+                </button>
+                ${!isVerified ? `
+                  <button class="btn-resend-mail px-2 py-1 text-[11px] font-semibold bg-blue-50 hover:bg-blue-100 text-blue-700 border border-blue-300 rounded-sm transition" data-user-id="${u.id}" data-email="${u.email}">
+                    Resend Email
+                  </button>
+                ` : ''}
+                ${!isSelf ? `
+                  <button class="btn-delete-user px-2 py-1 text-[11px] font-semibold bg-red-50 hover:bg-red-100 text-red-700 border border-red-300 rounded-sm transition" data-user-id="${u.id}" data-email="${u.email}">
+                    Delete
+                  </button>
+                ` : ''}
+              </div>
+            </td>
+          </tr>
+        `;
+      }).join('');
+
+      // Wire Role Change
+      usersTbody.querySelectorAll('.user-role-select').forEach(select => {
+        select.addEventListener('change', async () => {
+          const userId = select.dataset.userId;
+          const newRole = select.value;
+          try {
+            await api.updateUserRole(userId, newRole);
+            showToast(`Role updated to "${newRole}" successfully.`, 'success');
+            const uObj = users.find(x => x.id === userId);
+            if (uObj) uObj.role = newRole;
+            renderUsersRows();
+          } catch (rErr) {
+            showToast('Failed to update role: ' + rErr.message, 'error');
+            renderUsersRows();
+          }
+        });
+      });
+
+      // Wire Toggle Verification
+      usersTbody.querySelectorAll('.btn-toggle-verify').forEach(btn => {
+        btn.addEventListener('click', async () => {
+          const userId = btn.dataset.userId;
+          const currentlyVerified = btn.dataset.verified === 'true';
+          const newStatus = !currentlyVerified;
+
+          try {
+            await api.toggleUserVerification(userId, newStatus);
+            showToast(`User verification set to ${newStatus ? 'Verified' : 'Unverified'}.`, 'success');
+            const uObj = users.find(x => x.id === userId);
+            if (uObj) uObj.email_verified = newStatus;
+            renderUsersRows();
+          } catch (vErr) {
+            showToast('Failed to update verification: ' + vErr.message, 'error');
+          }
+        });
+      });
+
+      // Wire Resend Verification
+      usersTbody.querySelectorAll('.btn-resend-mail').forEach(btn => {
+        btn.addEventListener('click', async () => {
+          const userId = btn.dataset.userId;
+          const email = btn.dataset.email;
+          btn.textContent = 'Sending...';
+          btn.disabled = true;
+          try {
+            await api.resendUserVerification(userId);
+            showToast(`Verification email dispatched to ${email}.`, 'success');
+            btn.textContent = 'Sent ✔';
+          } catch (mErr) {
+            showToast('Error resending email: ' + mErr.message, 'error');
+            btn.textContent = 'Resend Email';
+            btn.disabled = false;
+          }
+        });
+      });
+
+      // Wire Delete User
+      usersTbody.querySelectorAll('.btn-delete-user').forEach(btn => {
+        btn.addEventListener('click', () => {
+          const userId = btn.dataset.userId;
+          const email = btn.dataset.email;
+          showModal(
+            'Delete User Account',
+            `Are you sure you want to permanently delete user account "<strong>${email}</strong>"?`,
+            'Delete Account',
+            async () => {
+              try {
+                await api.deleteUser(userId);
+                showToast(`User ${email} deleted successfully.`, 'success');
+                users = users.filter(x => x.id !== userId);
+                renderUsersRows();
+              } catch (dErr) {
+                showToast('Failed to delete user: ' + dErr.message, 'error');
+              }
+            }
+          );
+        });
+      });
+    }
+
+    usersSearch.addEventListener('input', renderUsersRows);
+    usersRoleFilter.addEventListener('change', renderUsersRows);
+    usersStatusFilter.addEventListener('change', renderUsersRows);
   }
 
-  searchInput.addEventListener('input', renderAdminRows);
-  ownerFilter.addEventListener('change', renderAdminRows);
-  stageFilter.addEventListener('change', renderAdminRows);
-  workstreamFilter.addEventListener('change', renderAdminRows);
-
-  renderAdminRows();
+  renderAdminView();
 }
 
 // ==========================================
@@ -1677,17 +2457,24 @@ async function renderProfile() {
 async function handleRouting() {
   const hash = window.location.hash || '#dashboard';
 
-  // Check auth session
-  const { data: { session } } = await supabase.auth.getSession();
+  // Extract base route
+  const baseRoute = hash.split('?')[0];
 
-  if (!session) {
-    activeUser = null;
-    if (hash === '#signup') {
+  // Refresh active user from token
+  await refreshActiveUser();
+
+  // Public Unauthenticated Routes
+  if (!activeUser) {
+    if (baseRoute === '#verify' || window.location.pathname === '/verify') {
+      await renderVerifyEmail();
+    } else if (baseRoute === '#signup') {
       renderSignUp();
-    } else if (hash === '#forgot-password') {
+    } else if (baseRoute === '#forgot-password') {
       renderForgotPassword();
+    } else if (baseRoute === '#reset-password') {
+      renderResetPassword();
     } else {
-      if (hash !== '#signin') {
+      if (baseRoute !== '#signin') {
         window.location.hash = '#signin';
       }
       renderSignIn();
@@ -1696,43 +2483,34 @@ async function handleRouting() {
   }
 
   // User is authenticated
-  if (!activeUser) {
-    await refreshActiveUser();
-  }
-
-  if (hash === '#signin' || hash === '#signup' || hash === '#forgot-password' || hash === '#login' || hash === '#') {
+  if (baseRoute === '#signin' || baseRoute === '#signup' || baseRoute === '#forgot-password' || baseRoute === '#reset-password' || baseRoute === '#login' || baseRoute === '#') {
     window.location.hash = '#dashboard';
-    renderDashboard();
-  } else if (hash === '#dashboard') {
-    renderDashboard();
-  } else if (hash === '#admin') {
+    await renderDashboard();
+  } else if (baseRoute === '#verify') {
+    // If authenticated but clicked verify link, perform verification then go to dashboard
+    await renderVerifyEmail();
+  } else if (baseRoute === '#dashboard') {
+    await renderDashboard();
+  } else if (baseRoute === '#admin') {
     if (activeUser?.role !== 'admin') {
       showToast('Access restricted to administrators', 'error');
       window.location.hash = '#dashboard';
-      renderDashboard();
+      await renderDashboard();
     } else {
       renderAdminConsole();
     }
-  } else if (hash.startsWith('#project/')) {
-    const id = hash.split('/')[1];
+  } else if (baseRoute.startsWith('#project/')) {
+    const id = baseRoute.split('/')[1];
     renderProjectDetail(id);
-  } else if (hash === '#profile') {
+  } else if (baseRoute === '#profile') {
     renderProfile();
   } else {
     window.location.hash = '#dashboard';
-    renderDashboard();
+    await renderDashboard();
   }
 }
 
 window.addEventListener('hashchange', handleRouting);
 
-supabase.auth.onAuthStateChange(async (event, session) => {
-  if (event === 'SIGNED_IN' || event === 'USER_UPDATED') {
-    await refreshActiveUser();
-  } else if (event === 'SIGNED_OUT') {
-    activeUser = null;
-    window.location.hash = '#signin';
-  }
-});
-
 handleRouting();
+

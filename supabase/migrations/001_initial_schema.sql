@@ -1,4 +1,5 @@
 -- 001_initial_schema.sql
+-- Lakshya Stage-Gate Pipeline Database Schema
 
 -- Enable UUID extension
 CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
@@ -9,9 +10,10 @@ CREATE TABLE IF NOT EXISTS public.users (
   email TEXT UNIQUE NOT NULL,
   password_hash TEXT NOT NULL,
   name TEXT NOT NULL,
-  role TEXT NOT NULL CHECK (role IN ('user', 'admin')) DEFAULT 'user',
+  role TEXT NOT NULL CHECK (role IN ('user', 'member', 'admin', 'approver', 'customer', 'lead')) DEFAULT 'user',
   email_verified BOOLEAN DEFAULT false,
-  created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc', now())
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc', now()),
+  updated_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc', now())
 );
 
 -- PROJECTS TABLE
@@ -33,6 +35,7 @@ CREATE TABLE IF NOT EXISTS public.projects (
   monthly_actuals NUMERIC DEFAULT 0,
   accrued_savings NUMERIC DEFAULT 0,
   annualized_roi NUMERIC DEFAULT 0,
+  owner_id UUID REFERENCES public.users(id) ON DELETE SET NULL,
   created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc', now()),
   updated_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc', now())
 );
@@ -43,17 +46,39 @@ CREATE TABLE IF NOT EXISTS public.stage_history (
   project_id UUID REFERENCES public.projects(id) ON DELETE CASCADE,
   from_stage TEXT,
   to_stage TEXT NOT NULL,
-  actor_id UUID REFERENCES public.users(id),
+  actor_id UUID REFERENCES public.users(id) ON DELETE SET NULL,
   comments TEXT,
   created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc', now())
 );
+
+-- PROJECT TEAM MEMBERS TABLE
+CREATE TABLE IF NOT EXISTS public.project_team_members (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  project_id UUID REFERENCES public.projects(id) ON DELETE CASCADE,
+  user_id UUID REFERENCES public.users(id) ON DELETE CASCADE,
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc', now())
+);
+
+-- PERFORMANCE INDEXES
+CREATE INDEX IF NOT EXISTS idx_users_email_lower ON public.users (LOWER(email));
+CREATE INDEX IF NOT EXISTS idx_projects_suggester_email ON public.projects (suggester_email);
+CREATE INDEX IF NOT EXISTS idx_projects_current_stage ON public.projects (current_stage);
+CREATE INDEX IF NOT EXISTS idx_projects_owner_id ON public.projects (owner_id);
+CREATE INDEX IF NOT EXISTS idx_projects_workstream ON public.projects (workstream);
+CREATE INDEX IF NOT EXISTS idx_projects_updated_at ON public.projects (updated_at DESC);
+CREATE INDEX IF NOT EXISTS idx_stage_history_project_id ON public.stage_history (project_id);
+CREATE INDEX IF NOT EXISTS idx_stage_history_actor_id ON public.stage_history (actor_id);
+CREATE INDEX IF NOT EXISTS idx_stage_history_created_at ON public.stage_history (created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_ptm_project_id ON public.project_team_members (project_id);
+CREATE INDEX IF NOT EXISTS idx_ptm_user_id ON public.project_team_members (user_id);
 
 -- RLS POLICIES
 ALTER TABLE public.users ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.projects ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.stage_history ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.project_team_members ENABLE ROW LEVEL SECURITY;
 
--- Admins can do everything
+-- Admins full access
 CREATE POLICY "Admins have full access to users" ON public.users
   FOR ALL USING (auth.uid() IN (SELECT id FROM public.users WHERE role = 'admin'));
 
@@ -63,17 +88,14 @@ CREATE POLICY "Admins have full access to projects" ON public.projects
 CREATE POLICY "Admins have full access to stage_history" ON public.stage_history
   FOR ALL USING (auth.uid() IN (SELECT id FROM public.users WHERE role = 'admin'));
 
--- Users can read projects
+-- Users can view projects
 CREATE POLICY "Users can view projects" ON public.projects
   FOR SELECT USING (auth.uid() IS NOT NULL);
 
--- Users can update projects they suggested or in their workstream
+-- Users can update their own projects
 CREATE POLICY "Users can update their projects" ON public.projects
   FOR UPDATE USING (
     auth.uid() IS NOT NULL AND (
-      suggester_email = (SELECT email FROM public.users WHERE id = auth.uid()) 
-      -- Add workstream condition if workstream tied to users later
+      suggester_email = (SELECT email FROM public.users WHERE id = auth.uid())
     )
   );
-
--- Stage history is insertable by edge functions or triggers but let's allow admins for now

@@ -178,3 +178,26 @@ projectsRouter.patch('/bulk', authMiddleware, async (req, res) => {
     client.release();
   }
 });
+
+// DELETE /api/projects/:id (Admin or project owner can delete project)
+projectsRouter.delete('/:id', authMiddleware, async (req, res) => {
+  try {
+    let sql = 'DELETE FROM projects WHERE id = $1';
+    const params = [req.params.id];
+
+    if (req.user.role !== 'admin') {
+      sql += ' AND (suggester_email = $2 OR owner_id = $3)';
+      params.push(req.user.email, req.user.id);
+    }
+
+    const result = await query(sql + ' RETURNING id, title', params);
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: 'Project not found or permission denied.' });
+    }
+
+    res.json({ message: `Project "${result.rows[0].title}" deleted successfully.` });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
