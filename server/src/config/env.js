@@ -28,7 +28,7 @@ export const env = {
   SMTP_USER: process.env.SMTP_USER || 'sk6290754634@gmail.com',
   SMTP_PASS: process.env.SMTP_PASS || 'aprw crwe yvnh onpv',
   SMTP_FROM: process.env.SMTP_FROM || 'sk6290754634@gmail.com',
-  APP_BASE_URL: process.env.APP_BASE_URL || (process.env.VERCEL ? 'https://lakshaportal.vercel.app' : 'http://localhost:5173'),
+  APP_BASE_URL: process.env.APP_BASE_URL || 'https://lakshaportal.vercel.app',
 };
 
 if (!env.DATABASE_URL) {
