@@ -112,9 +112,12 @@ async function executeViaSupabase(sql, params = []) {
       } else if (lowerSql.includes('password_hash =')) {
         updateData.password_hash = params[0];
         whereId = params[1];
+      } else if (lowerSql.includes('email_verified = true') || lowerSql.includes('email_verified = false')) {
+        updateData.email_verified = lowerSql.includes('email_verified = true');
+        whereId = params[0];
       } else if (lowerSql.includes('email_verified =')) {
         updateData.email_verified = Boolean(params[0]);
-        whereId = params[1];
+        whereId = params[1] || params[0];
       } else if (lowerSql.includes('role =')) {
         updateData.role = params[0];
         whereId = params[1];
