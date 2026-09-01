@@ -1,3 +1,4 @@
+import dns from 'dns';
 import express from 'express';
 import cors from 'cors';
 import { env } from './config/env.js';
@@ -5,6 +6,10 @@ import { authRouter } from './routes/auth.routes.js';
 import { dashboardRouter } from './routes/dashboard.routes.js';
 import { projectsRouter } from './routes/projects.routes.js';
 import { usersRouter } from './routes/users.routes.js';
+
+try {
+  dns.setDefaultResultOrder('verbatim');
+} catch (e) {}
 
 export const app = express();
 
