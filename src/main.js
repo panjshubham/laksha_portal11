@@ -244,13 +244,11 @@ function renderSignIn(flashMsg = '') {
               <span class="text-[10px] text-blue-600 font-normal">Click to autofill</span>
             </div>
             <div class="grid grid-cols-2 gap-2">
-              <button type="button" id="fill-admin-btn" class="py-1 px-2 bg-purple-50 hover:bg-purple-100 border border-purple-200 text-purple-900 rounded font-semibold text-left transition flex items-center justify-between">
-                <span>Admin</span>
-                <span class="text-[10px] text-purple-600 font-mono">admin@lakshya.com</span>
+              <button type="button" id="fill-admin-btn" class="py-1.5 px-3 bg-purple-50 hover:bg-purple-100 border border-purple-200 text-purple-900 rounded font-semibold text-center transition">
+                Admin
               </button>
-              <button type="button" id="fill-user-btn" class="py-1 px-2 bg-blue-50 hover:bg-blue-100 border border-blue-200 text-blue-900 rounded font-semibold text-left transition flex items-center justify-between">
-                <span>Employee</span>
-                <span class="text-[10px] text-blue-600 font-mono">vikram@lakshya.com</span>
+              <button type="button" id="fill-user-btn" class="py-1.5 px-3 bg-blue-50 hover:bg-blue-100 border border-blue-200 text-blue-900 rounded font-semibold text-center transition">
+                Employee
               </button>
             </div>
           </div>

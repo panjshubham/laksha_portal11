@@ -24,25 +24,57 @@ function getHeaders(extraHeaders = {}) {
 }
 
 async function request(endpoint, options = {}) {
-  const url = `${API_BASE}${endpoint.startsWith('/') ? endpoint : `/${endpoint}`}`;
+  const formattedEndpoint = endpoint.startsWith('/') ? endpoint : `/${endpoint}`;
+  const url = `${API_BASE}${formattedEndpoint}`;
   const config = {
     ...options,
     headers: getHeaders(options.headers),
   };
 
-  const response = await fetch(url, config);
-  const data = await response.json().catch(() => ({}));
+  try {
+    const response = await fetch(url, config);
+    const data = await response.json().catch(() => ({}));
 
-  if (!response.ok) {
-    const error = new Error(data.error || data.message || `Request failed with status ${response.status}`);
-    error.status = response.status;
-    error.data = data;
-    error.unverified = !!data.unverified;
-    error.email = data.email;
-    throw error;
+    if (!response.ok) {
+      // If local server returned ECONNREFUSED or ENOTFOUND, seamlessly failover to live Vercel cloud API
+      if (API_BASE === '' && (response.status === 500 || response.status === 502) && (data.error?.includes('ECONNREFUSED') || data.error?.includes('ENOTFOUND'))) {
+        try {
+          const cloudResponse = await fetch(`https://lakshaportal.vercel.app${formattedEndpoint}`, config);
+          const cloudData = await cloudResponse.json().catch(() => ({}));
+          if (cloudResponse.ok) return cloudData;
+        } catch (cloudFail) {}
+      }
+
+      const error = new Error(data.error || data.message || `Request failed with status ${response.status}`);
+      error.status = response.status;
+      error.data = data;
+      error.unverified = !!data.unverified;
+      error.email = data.email;
+      throw error;
+    }
+
+    return data;
+  } catch (err) {
+    // If fetch failed completely (e.g. backend server stopped locally), fallback to live Vercel cloud API
+    if (API_BASE === '' && (err.name === 'TypeError' || err.message?.includes('fetch') || err.message?.includes('Failed to fetch') || err.message?.includes('NetworkError'))) {
+      try {
+        const cloudResponse = await fetch(`https://lakshaportal.vercel.app${formattedEndpoint}`, config);
+        const cloudData = await cloudResponse.json().catch(() => ({}));
+        if (cloudResponse.ok) return cloudData;
+        if (!cloudResponse.ok && cloudData.error) {
+          const cloudErr = new Error(cloudData.error || cloudData.message);
+          cloudErr.status = cloudResponse.status;
+          cloudErr.data = cloudData;
+          cloudErr.unverified = !!cloudData.unverified;
+          cloudErr.email = cloudData.email;
+          throw cloudErr;
+        }
+      } catch (cloudFail) {
+        if (cloudFail.status) throw cloudFail;
+      }
+    }
+    throw err;
   }
-
-  return data;
 }
 
 export const api = {
