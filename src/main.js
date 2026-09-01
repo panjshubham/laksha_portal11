@@ -245,11 +245,11 @@ function renderSignIn(flashMsg = '') {
             </div>
             <div class="grid grid-cols-2 gap-2">
               <button type="button" id="fill-admin-btn" class="py-1 px-2 bg-purple-50 hover:bg-purple-100 border border-purple-200 text-purple-900 rounded font-semibold text-left transition flex items-center justify-between">
-                <span>👑 Admin</span>
+                <span>Admin</span>
                 <span class="text-[10px] text-purple-600 font-mono">admin@lakshya.com</span>
               </button>
               <button type="button" id="fill-user-btn" class="py-1 px-2 bg-blue-50 hover:bg-blue-100 border border-blue-200 text-blue-900 rounded font-semibold text-left transition flex items-center justify-between">
-                <span>👤 Employee</span>
+                <span>Employee</span>
                 <span class="text-[10px] text-blue-600 font-mono">vikram@lakshya.com</span>
               </button>
             </div>
@@ -383,11 +383,9 @@ function renderSignUp() {
             <div>
               <label class="block font-semibold text-gray-700 mb-1" for="signup-role">Account Type</label>
               <select id="signup-role" class="auth-input">
-                <option value="admin">👑 Administrator / Executive</option>
-                <option value="user" selected>👤 Employee / Team Member</option>
-                <option value="customer">🏢 Customer / External Partner</option>
-                <option value="approver">✍️ Gate Approver</option>
-                <option value="lead">🚀 Workstream Lead</option>
+                <option value="admin">Admin</option>
+                <option value="user" selected>Employee</option>
+                <option value="customer">Customer</option>
               </select>
             </div>
 
@@ -1354,12 +1352,10 @@ async function renderAdminConsole() {
                 <label class="font-semibold text-gray-700">Role:</label>
                 <select id="admin-users-role-filter" class="bg-white border border-gray-300 px-2 py-1 text-xs focus:outline-none focus:border-[#1F3864]">
                   <option value="ALL">All Roles</option>
-                  <option value="admin">Administrator (admin)</option>
-                  <option value="member">Team Member (member)</option>
-                  <option value="user">Employee (user)</option>
-                  <option value="customer">Customer / Partner</option>
-                  <option value="approver">Gate Approver</option>
-                  <option value="lead">Workstream Lead</option>
+                  <option value="admin">Admin</option>
+                  <option value="member">Member</option>
+                  <option value="user">Employee</option>
+                  <option value="customer">Customer</option>
                 </select>
               </div>
 
@@ -1594,12 +1590,10 @@ async function renderAdminConsole() {
             <td class="py-2 px-2.5 font-mono text-gray-700 border-r border-gray-200">${u.email}</td>
             <td class="py-2 px-2.5 text-center border-r border-gray-200">
               <select class="user-role-select text-xs font-semibold px-2 py-0.5 border rounded-sm ${roleBadge}" data-user-id="${u.id}" ${isSelf ? 'disabled title="You cannot change your own role"' : ''}>
-                <option value="admin" ${u.role === 'admin' ? 'selected' : ''}>Administrator</option>
-                <option value="member" ${u.role === 'member' ? 'selected' : ''}>Team Member</option>
+                <option value="admin" ${u.role === 'admin' ? 'selected' : ''}>Admin</option>
+                <option value="member" ${u.role === 'member' ? 'selected' : ''}>Member</option>
                 <option value="user" ${u.role === 'user' ? 'selected' : ''}>Employee</option>
-                <option value="customer" ${u.role === 'customer' ? 'selected' : ''}>Customer / Partner</option>
-                <option value="approver" ${u.role === 'approver' ? 'selected' : ''}>Gate Approver</option>
-                <option value="lead" ${u.role === 'lead' ? 'selected' : ''}>Workstream Lead</option>
+                <option value="customer" ${u.role === 'customer' ? 'selected' : ''}>Customer</option>
               </select>
             </td>
             <td class="py-2 px-2.5 text-center border-r border-gray-200">
