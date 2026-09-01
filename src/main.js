@@ -316,11 +316,8 @@ function renderSignIn(flashMsg = '') {
     try {
       await api.signIn(email, password);
       await refreshActiveUser();
-      if (activeUser?.role === 'admin') {
-        window.location.hash = '#dashboard';
-      } else {
-        window.location.hash = '#dashboard';
-      }
+      window.location.hash = '#dashboard';
+      await handleRouting();
     } catch (err) {
       if (err.unverified || (err.message && err.message.toLowerCase().includes('not verified'))) {
         unverifiedEmailTxt.textContent = email;
