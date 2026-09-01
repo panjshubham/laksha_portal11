@@ -314,7 +314,10 @@ function renderSignIn(flashMsg = '') {
     submitBtn.disabled = true;
 
     try {
-      await api.signIn(email, password);
+      const authRes = await api.signIn(email, password);
+      if (authRes?.user) {
+        activeUser = authRes.user;
+      }
       await refreshActiveUser();
       window.location.hash = '#dashboard';
       await handleRouting();
