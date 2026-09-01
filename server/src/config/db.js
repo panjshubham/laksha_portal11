@@ -3,8 +3,10 @@ import { env } from './env.js';
 
 const { Pool } = pg;
 
+const DB_URL = env.DATABASE_URL || 'postgresql://postgres:Shubham%40123@db.kfsgcftwlsptpcysgchc.supabase.co:5432/postgres';
+
 export const pool = new Pool({
-  connectionString: env.DATABASE_URL,
+  connectionString: DB_URL,
   ssl: {
     rejectUnauthorized: false,
   },
