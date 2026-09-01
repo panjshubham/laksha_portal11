@@ -18,6 +18,9 @@ dotenv.config({ path: path.resolve(__dirname, '../../../.env') });
 export const env = {
   PORT: process.env.PORT || 3001,
   DATABASE_URL: process.env.DATABASE_URL || 'postgresql://postgres:Shubham%40123@db.kfsgcftwlsptpcysgchc.supabase.co:5432/postgres',
+  SUPABASE_URL: process.env.SUPABASE_URL || 'https://kfsgcftwlsptpcysgchc.supabase.co',
+  SUPABASE_ANON_KEY: process.env.SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imtmc2djZnR3bHNwdHBjeXNnY2hjIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODc2NzQ1ODcsImV4cCI6MjEwMzI1MDU4N30._YtwONIFbQRG4o0GHa0uzf77AYqbgdwWh900wkiAaBc',
+  SUPABASE_SERVICE_ROLE_KEY: process.env.SUPABASE_SERVICE_ROLE_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imtmc2djZnR3bHNwdHBjeXNnY2hjIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc4NzY3NDU4NywiZXhwIjoyMTAzMjUwNTg3fQ.JQKf3XYlPAh3AZ92q4T74S7EBwedYRS-lQCvOzP5Xlo',
   JWT_SECRET: process.env.JWT_SECRET || 'Tem0Q6gW6DnmjVsp5oBEOCyig+Je9OlfvTdrXTZbfXhnuSCV1a6QsDaokRPbdmg5MqKaPDBo7V1p520JlcPJgQ==',
   JWT_EXPIRES_IN: process.env.JWT_EXPIRES_IN || '24h',
   SMTP_HOST: process.env.SMTP_HOST || 'smtp.gmail.com',
