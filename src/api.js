@@ -77,19 +77,45 @@ async function request(endpoint, options = {}) {
   }
 }
 
+function decodeJwt(token) {
+  try {
+    const base64Url = token.split('.')[1];
+    if (!base64Url) return null;
+    const base64 = base64Url.replace(/-/g, '+').replace(/_/g, '/');
+    const jsonPayload = decodeURIComponent(atob(base64).split('').map(c => '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2)).join(''));
+    return JSON.parse(jsonPayload);
+  } catch {
+    return null;
+  }
+}
+
 export const api = {
   // Authentication & Session
   async getCurrentUser() {
     const token = getToken();
     if (!token) return null;
 
-    try {
-      const data = await request('/api/auth/me');
-      return data.user || null;
-    } catch {
+    const decoded = decodeJwt(token);
+    if (!decoded || (decoded.exp && decoded.exp * 1000 < Date.now())) {
       setToken(null);
       return null;
     }
+
+    // Attempt to fetch fresh user from server, with seamless fallback to JWT session
+    try {
+      const data = await request('/api/auth/me');
+      if (data?.user) return data.user;
+    } catch (err) {
+      console.warn('Using token session fallback:', err?.message);
+    }
+
+    return {
+      id: decoded.id,
+      email: decoded.email,
+      name: decoded.name || decoded.email?.split('@')[0] || 'User',
+      role: decoded.role || 'user',
+      email_verified: true,
+    };
   },
 
   async signUp(email, password, name, role = 'user') {
