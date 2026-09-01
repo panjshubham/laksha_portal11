@@ -22,8 +22,16 @@ app.get('/health', (req, res) => {
 
 // Start local listener if not running in Vercel serverless environment
 if (!process.env.VERCEL) {
-  app.listen(env.PORT, () => {
+  const server = app.listen(env.PORT, () => {
     console.log(`Server listening on port ${env.PORT}`);
+  });
+
+  server.on('error', (err) => {
+    if (err.code === 'EADDRINUSE') {
+      console.log(`ℹ️ Backend server is already running and active on port ${env.PORT}. Ready for requests.`);
+    } else {
+      console.error('Server error:', err);
+    }
   });
 }
 
