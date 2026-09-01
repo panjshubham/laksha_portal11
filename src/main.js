@@ -282,17 +282,17 @@ function renderSignIn(flashMsg = '') {
 
   if (fillAdmin) {
     fillAdmin.addEventListener('click', () => {
-      emailInput.value = 'admin@lakshya.com';
-      pwdInput.value = 'Password123!';
+      emailInput.value = '93.shubhampanjiyara@gmail.com';
+      pwdInput.value = '123456789';
       showToast('Admin credentials filled!', 'success');
     });
   }
 
   if (fillUser) {
     fillUser.addEventListener('click', () => {
-      emailInput.value = '93.shubhampanjiyara@gmail.com';
+      emailInput.value = 'vikram@lakshya.com';
       pwdInput.value = 'Password123!';
-      showToast('User credentials filled!', 'success');
+      showToast('Employee credentials filled!', 'success');
     });
   }
 
